@@ -2,7 +2,7 @@ using DrWatson, Test
 @quickactivate "CoEvolution"
 
 # Here you include files using `srcdir`
-# include(srcdir("file.jl"))
+include(srcdir("ERC_functions.jl"))
 
 # Run test suite
 println("Starting tests")
