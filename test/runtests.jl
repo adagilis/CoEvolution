@@ -15,6 +15,7 @@ species_tree = open(parsenewick,projectdir("test","data","species_tree.newick"))
     @test calculate_ERC(1,3,species_tree,5)[:r2] == 1
     @test calculate_ERC(2,3,species_tree,5)[:r2] == 1 #TODO: fix issues when branch order not identical
     @test calculate_ERC(3,4,species_tree,5)[:r2] == 1 #TODO: fix issues when branch order not identical
+    @test runERC()[:,:r2] == [1,1,1,1,1,1]
 end
 
 ti = time() - ti

@@ -2,7 +2,7 @@ using DrWatson
 @quickactivate "CoEvolution"
 
 # Here you may include files from the source directory
-include(srcdir("dummy_src_file.jl"))
+include(srcdir("ERC_functions.jl"))
 
 println(
 """
@@ -10,10 +10,19 @@ Currently active project is: $(projectname())
 
 Path of active project: $(projectdir())
 
-Have fun with your new project!
-
-You can help us improve DrWatson by opening
-issues on GitHub, submitting feature requests,
-or even opening your own Pull Requests!
+Running analysis step 1: calculating ERC scores
 """
 )
+
+trees = filter(contains(".treefile"),readdir(datadir("trees"),join=true))
+species_tree = open(parsenewick,datadir("trees","species_tree.newick"))
+
+println(
+"""
+Found $(length(trees)) in `data/trees` directory, loaded in species tree.
+
+Running $(length(trees)*(length(trees)-1)/2) comparisons.
+"""
+)
+
+ERC_res = runERC()

@@ -41,10 +41,10 @@ function runERC()
     local ERC_res=[]
         for i in range(1,length(trees)-1)
             for j in range(i+1,length(trees))
-                push!(ERC_res,ERC(i,j,total,5))
+                push!(ERC_res,calculate_ERC(i,j,species_tree,5))
             end
         end
-    return(ERC_res)
+    return(DataFrame(ERC_res))
 end
 
 function zscore(x)
