@@ -26,3 +26,4 @@ Running $(length(trees)*(length(trees)-1)/2) comparisons.
 )
 
 ERC_res = runERC()
+
