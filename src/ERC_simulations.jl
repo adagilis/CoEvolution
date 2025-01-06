@@ -7,26 +7,16 @@ using Statistics
 using HypothesisTests
 using CSV
 
-function phylo_to_net(tree)
-    return(PhyloNetworks.readnewick(Phylo.outputtree(tree,Newick())))
-end
-
-function net_to_phylo(net)
-    return(Phylo.parsenewick(PhyloNetworks.writenewick(net)))
-end
+include("Phylo_utilities.jl")
 
 function run_simulations(species_tree,scale,n)
     copy_tree = deepcopy(species_tree)
-    for e in getbranches(copy_tree)
-        e.length = scale*e.length
-    end
+    rescale_tree!(copy_tree,scale)
     net = phylo_to_net(copy_tree)
     nets = simulatecoalescent(net,n,1)
     nets = net_to_phylo.(nets)
     for t in nets
-        for e in getbranches(t)
-            e.length = e.length / scale
-        end
+        rescale_tree!(t,1/scale)
     end
     return(nets)
 end

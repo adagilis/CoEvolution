@@ -1,19 +1,17 @@
+using Phylo
+using FLoops
+using DataFrames
+using Statistics
+using HypothesisTests
+using CSV
+
+include("Phylo_utilities.jl")
 """
     calculate_ERC(gene1,gene2,species_tree,cutoff) → [cor,p-value]
 Function which takes two gene trees and a species tree, and returns the Evolutionary Rate Correlation between the two genes.
 ERC is defined as the correlation of Z-scores in evolutionary rates for both trees.
 
 """
-
-using Phylo
-using DataFrames
-using Statistics
-using HypothesisTests
-using CSV
-
-function read_tree(file)
-    return(open(parsenewick,file))
-end
 
 function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree,cutoff=-5)
     template = deepcopy(species_tree)
@@ -53,26 +51,38 @@ end
 
 #TODO - parallelize
 
-function runERC_files(trees)
-    local ERC_res=[]
-        for i in range(1,length(trees)-1)
+function runERC_files(trees,species_tree)
+    num_comp = binomial(length(trees),2)
+    local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
+    @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
+        if(j>i)
             ti = read_tree(trees[i])
-            for j in range(i+1,length(trees))
-                tj = read_tree(trees[j])
-                push!(ERC_res,calculate_ERC(i,j,ti,tj,species_tree,5))
-            end
-        end
-    return(DataFrame(ERC_res))
-end
-
-function runERC_collection(trees)
-    local ERC_res=[]
-    for i in range(1,length(trees)-1)
-        for j in range(i+1,length(trees))
-            push!(ERC_res,calculate_ERC(i,j,trees[i],trees[j],species_tree,5))
+            tj = read_tree(trees[j])
+            index = index_func(i,j,length(trees))
+            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree,5)
         end
     end
-return(DataFrame(ERC_res))
+    return(ERC_res)
+end
+
+function runERC_collection(trees,species_tree)
+    num_comp = binomial(length(trees),2)
+    local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
+    @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
+        if(j>i)
+            index = index_func(i,j,length(trees))
+            ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree,5)
+        end
+    end
+return(ERC_res)
+end
+
+function index_func(i,j,n)
+    k = 0
+    if(i>1)
+        k = (i-1)*n-sum(1:i .- 1)
+    end
+    return(k+j-i)
 end
 
 function zscore(x)

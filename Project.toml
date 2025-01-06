@@ -2,11 +2,14 @@ name = "CoEvolution"
 authors = ["adagilis"]
 
 [deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+FLoops = "cc61a311-1640-44b5-9fba-1b764f453329"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 HypothesisTests = "09f84164-cd44-5f33-b23f-e6b0d136a0d5"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 Phylo = "aea672f4-3940-5932-aa44-993d1c3ff149"
 PhyloCoalSimulations = "53f7b83a-06b5-4910-9a21-1896bf762ade"
 PhyloNetworks = "33ad39ac-ed31-50eb-9b15-43d0656eaa72"
