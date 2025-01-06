@@ -4,6 +4,7 @@ using DataFrames
 using Statistics
 using HypothesisTests
 using CSV
+using ProgressMeter
 
 include("Phylo_utilities.jl")
 """
@@ -53,6 +54,7 @@ end
 
 function runERC_files(trees,species_tree)
     num_comp = binomial(length(trees),2)
+    p = Progress(num_comp)
     local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
     @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
         if(j>i)
@@ -60,6 +62,7 @@ function runERC_files(trees,species_tree)
             tj = read_tree(trees[j])
             index = index_func(i,j,length(trees))
             ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree,5)
+            next!(p)
         end
     end
     return(ERC_res)
@@ -67,11 +70,13 @@ end
 
 function runERC_collection(trees,species_tree)
     num_comp = binomial(length(trees),2)
+    p = Progress(num_comp)
     local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
     @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
         if(j>i)
             index = index_func(i,j,length(trees))
             ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree,5)
+            next!
         end
     end
 return(ERC_res)

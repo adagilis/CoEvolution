@@ -21,7 +21,7 @@ println(
 """
 Found $(length(trees)) in `data/trees` directory, loaded in species tree.
 
-Running $(length(trees)*(length(trees)-1)/2) comparisons.
+Running $(binomial(length(trees),2)) comparisons.
 """
 )
 
