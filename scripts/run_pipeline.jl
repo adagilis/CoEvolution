@@ -1,7 +1,38 @@
 using DrWatson
 @quickactivate "CoEvolution"
 
-# Here you may include files from the source directory
+println("Analysis pipeline for Evolutionary Rate Correlations including null simulations.")
+
+using ArgParse, JLD2
+function parse_arguments()
+    s = ArgParseSettings()
+    @add_arg_table s begin
+        "--species_tree", "-t"
+            required = true
+            help = "Newick file containing species tree to sim."
+        "--tree_dir", "-d" #TODO rewrite as a concatenated treefile?
+            required = true
+            help = "Directory containing gene tree files."
+        "--rescale", "-r"
+            help = "Flag if branch lengths need to be rescaled"
+            action = :store_true
+        "--theta", "-θ"
+            arg_type = Float64
+            default = 1.0
+            help = "Watterson's θ used to rescale branch lengths when needed (default = 1)"
+        "--simulations", "-s"
+            help = "number of gene trees to simulate, exponential run time with increased simulations (default = 1000)"
+            arg_type = Int
+            default = 1000
+        "--positive_sim_branches","-n"
+            help = "Number of branches with correlated rates for positive simulation subset (default 4). Currently non-functional."
+            default=4
+            arg_type = Int
+    end
+
+    return parse_args(s)
+end
+
 include(srcdir("ERC_functions.jl"))
 
 println(
@@ -25,5 +56,17 @@ Running $(binomial(length(trees),2)) comparisons.
 """
 )
 
-ERC_res = runERC()
+ERC_res = runERC_files(trees,species_tree)
+
+#Save output into jld2
+
+using JLD2
+
+jldsave(datadir("processed","processed_trees.jld2"),ERC=ERC_res)
+
+#Run null simulation in background
+
+#Determine cutoffs based on null
+
+#Output edges based on raw significance and null informed quantile.
 

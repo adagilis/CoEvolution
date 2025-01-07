@@ -14,7 +14,7 @@ ERC is defined as the correlation of Z-scores in evolutionary rates for both tre
 
 """
 
-function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree,cutoff=-5)
+function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
     gene2 = deepcopy(tree2)
@@ -50,33 +50,42 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree,cutoff=-5)
     return(Dict(:i => id1,:j => id2,:n_edges=>length(kept_edges),:r2 => r2,:pval => pval))
 end
 
-#TODO - parallelize
+
+
+"""
+    runERC_files(trees,species_tree) → DataFrame{[i,j,branches,cor,p-value]}
+Calculate a set of ERC values given a list of gene trees `trees` and a species tree `species_tree`. Returns DataFrame object with five columns. 
+"""
 
 function runERC_files(trees,species_tree)
     num_comp = binomial(length(trees),2)
-    p = Progress(num_comp)
+    p = Progress(num_comp,desc="Calculating ERC scores:")
     local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
     @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
         if(j>i)
             ti = read_tree(trees[i])
             tj = read_tree(trees[j])
             index = index_func(i,j,length(trees))
-            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree,5)
+            try
+                ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree,5)
+            catch
+                #println("ERC failed to calculate for $(i), $(j)")
+            end
             next!(p)
         end
     end
     return(ERC_res)
 end
 
-function runERC_collection(trees,species_tree)
+function runERC_collection(trees,species_tree;cutoff=5)
     num_comp = binomial(length(trees),2)
-    p = Progress(num_comp)
+    p = Progress(num_comp,desc="Calculating ERC scores:")
     local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
     @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
         if(j>i)
             index = index_func(i,j,length(trees))
             ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree,5)
-            next!
+            next!(p)
         end
     end
 return(ERC_res)
