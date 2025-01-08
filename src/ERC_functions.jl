@@ -70,6 +70,7 @@ function runERC_files(trees,species_tree)
                 ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree,5)
             catch
                 #println("ERC failed to calculate for $(i), $(j)")
+                ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>0,:r2 => -1,:pval =>-1)
             end
             next!(p)
         end
@@ -84,11 +85,16 @@ function runERC_collection(trees,species_tree;cutoff=5)
     @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
         if(j>i)
             index = index_func(i,j,length(trees))
-            ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree,5)
+            try
+                ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree,5)
+            catch
+                #println("ERC failed to calculate for $(i), $(j)")
+                ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>0,:r2 => -1,:pval =>-1)
+            end
             next!(p)
         end
     end
-return(ERC_res)
+    return(ERC_res)
 end
 
 function index_func(i,j,n)

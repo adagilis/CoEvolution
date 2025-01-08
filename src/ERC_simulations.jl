@@ -15,14 +15,14 @@ function run_simulations(species_tree,scale,genes,min_tips,max_tips)
 end
 
 function simulate_subsampled(species_tree,n,scale)
-    local copy_tree = deepcopy(species_tree)
-    local leaves = getleafnames(copy_tree)
-    local rand_tips = sample(leaves,n,replace=false)
+    copy_tree = deepcopy(species_tree)
+    leaves = getleafnames(copy_tree)
+    rand_tips = sample(leaves,n,replace=false)
     reorder_tree(copy_tree,rand_tips)
     rescale_tree!(copy_tree,scale)
-    local net = phylo_to_net(copy_tree)
-    local sim = simulatecoalescent(net,1,1)[1]
-    local tree = net_to_phylo(sim)
+    net = phylo_to_net(copy_tree)
+    sim = simulatecoalescent(net,1,1;nodemapping=true)[1]
+    tree = net_to_phylo(removedegree2nodes!(sim))
     rescale_tree!(tree,1/scale)
     return(tree)
 end
