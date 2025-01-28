@@ -56,6 +56,7 @@ Running $(binomial(length(trees),2)) comparisons.
 """
 )
 
+
 ERC_res = runERC_files(trees,species_tree)
 
 #Save output into jld2
@@ -66,6 +67,8 @@ jldsave(datadir("processed","processed_trees.jld2"),ERC=ERC_res)
 
 #Run null simulation in background
 
+
+include(srcdir("ERC_simulations.jl"))
 #Determine cutoffs based on null
 
 #Output edges based on raw significance and null informed quantile.

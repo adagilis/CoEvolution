@@ -6,7 +6,7 @@ using HypothesisTests
 using CSV
 using ProgressMeter
 
-include("Phylo_utilities.jl")
+include("Phylo_utilities.jl") 
 """
     calculate_ERC(gene1,gene2,species_tree,cutoff) → [cor,p-value]
 Function which takes two gene trees and a species tree, and returns the Evolutionary Rate Correlation between the two genes.
@@ -34,18 +34,21 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
                 r2 = cor(z_1[kept_edges],z_2[kept_edges])
                 pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
             else 
-                r2 = 0
-                pval = 1
+                #Too few edges with values below cutoff
+                r2 = 0.0
+                pval = 1.0
             end
         else
-            r2 = 0
-            pval = 1
-            kept_edges=0
+            #Insufficient edge overlap
+            r2 = 0.0
+            pval = 1.0
+            kept_edges=[]
         end
     else
-        r2 = 0
-        pval = 1
-        kept_edges = 0
+        #No tip overlap
+        r2 = 0.0
+        pval = 1.0
+        kept_edges = []
     end
     return(Dict(:i => id1,:j => id2,:n_edges=>length(kept_edges),:r2 => r2,:pval => pval))
 end
@@ -57,7 +60,7 @@ end
 Calculate a set of ERC values given a list of gene trees `trees` and a species tree `species_tree`. Returns DataFrame object with five columns. 
 """
 
-function runERC_files(trees,species_tree)
+function runERC_files(trees,species_tree;cutoff=5)
     num_comp = binomial(length(trees),2)
     p = Progress(num_comp,desc="Calculating ERC scores:")
     local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r2,:pval])
@@ -67,9 +70,10 @@ function runERC_files(trees,species_tree)
             tj = read_tree(trees[j])
             index = index_func(i,j,length(trees))
             try
-                ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree,5)
+                ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=5)
             catch
                 #println("ERC failed to calculate for $(i), $(j)")
+                #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
                 ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>0,:r2 => -1,:pval =>-1)
             end
             next!(p)
@@ -86,7 +90,7 @@ function runERC_collection(trees,species_tree;cutoff=5)
         if(j>i)
             index = index_func(i,j,length(trees))
             try
-                ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree,5)
+                ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=5)
             catch
                 #println("ERC failed to calculate for $(i), $(j)")
                 ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>0,:r2 => -1,:pval =>-1)
