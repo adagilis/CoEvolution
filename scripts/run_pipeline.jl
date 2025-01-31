@@ -28,6 +28,7 @@ function parse_arguments()
             help = "Number of branches with correlated rates for positive simulation subset (default 4). Currently non-functional."
             default=4
             arg_type = Int
+        "--project_name","-o"
     end
 
     return parse_args(s)
@@ -45,8 +46,8 @@ Running analysis step 1: calculating ERC scores
 """
 )
 
-trees = filter(contains(".treefile"),readdir(datadir("trees"),join=true))
-species_tree = open(parsenewick,datadir("trees","species_tree.newick"))
+trees = filter(contains("rooted.tre"),readdir(datadir("trees"),join=true))
+species_tree = open(parsenewick,datadir("trees","yeast_consensus.tree"))
 
 println(
 """
@@ -59,11 +60,22 @@ Running $(binomial(length(trees),2)) comparisons.
 
 ERC_res = runERC_files(trees,species_tree)
 
+
+#Quick report of results
+using UnicodePlots
+
+println("""
+ERC values calculated! μ = $(mean(ERC_res[:,"r2"])), σ = $(std(ERC_res[:,"r2"])).
+
+Distribution:
+""")
+
+histogram(ERC_res[:,"r2"])
 #Save output into jld2
 
 using JLD2
 
-jldsave(datadir("processed","processed_trees.jld2"),ERC=ERC_res)
+jldsave(datadir("processed","yeast_trees.jld2"),ERC=ERC_res)
 
 #Run null simulation in background
 
