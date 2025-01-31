@@ -119,5 +119,11 @@ end
 
 function reorder_tree(tree::RootedTree,tips)
     sort!(keeptips!(tree,tips))
-    return(parsenewick(Phylo.outputtree(tree,Newick())))
+    return(Phylo.parsenewick(Phylo.outputtree(tree,Newick())))
+end
+
+function cladewise_order!(tree)
+    local tmp = phylo_to_net(tree)
+    PhyloNetworks.cladewiseorder!(tmp)
+    return(net_to_phylo(tmp))
 end
