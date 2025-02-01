@@ -36,3 +36,11 @@ function rescale_tree!(tree,scale)
         e.length = e.length * scale
     end
 end
+
+"""
+    tip_overlap(tree1::Phylo,tree2::Phylo) -> [String]
+returns terminal nodes present in both trees
+"""
+function tip_overlap(tree1,tree2)
+    return(intersect(getleafnames(tree1),getleafnames(tree2)))
+end

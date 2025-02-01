@@ -82,6 +82,3 @@ jldsave(datadir("processed","yeast_trees.jld2"),ERC=ERC_res)
 
 include(srcdir("ERC_simulations.jl"))
 #Determine cutoffs based on null
-
-#Output edges based on raw significance and null informed quantile.
-

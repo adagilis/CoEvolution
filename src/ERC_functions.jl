@@ -18,31 +18,28 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
     gene2 = deepcopy(tree2)
-    tips_both=intersect(getleafnames(gene1),getleafnames(gene2))
+    tips_both=tip_overlap(gene1,gene2)
     if(length(tips_both) >= 3)
-        template = reorder_tree(template,tips_both)
-        gene1 = reorder_tree(gene1,tips_both)
-        gene2 = reorder_tree(gene2,tips_both)
-        if(length(gene1.branches)==length(gene2.branches))
-            scale_rates = get_branch_lengths(template)
-            branches_1 = get_branch_lengths(gene1) ./ scale_rates
-            branches_2 = get_branch_lengths(gene2) ./ scale_rates
-            kept_edges = intersect(findall(<(cutoff),branches_1),findall(<(cutoff),branches_2))
-            if(length(kept_edges)>3)
-                z_1 = zscore(branches_1)
-                z_2 = zscore(branches_2)
-                r2 = cor(z_1[kept_edges],z_2[kept_edges])
-                pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
-            else 
-                #Too few edges with values below cutoff
-                r2 = 0.0
-                pval = 1.0
-            end
-        else
-            #Insufficient edge overlap
+        keeptips!(template,tips_both)
+        keeptips!(gene1,tips_both)
+        keeptips!(gene2,tips_both)        
+        scale_rates = breakdown_tree(template)
+        branches_1 = breakdown_tree(gene1)
+        idx1 = indexin(branches_1[:,"node"],scale_rates[:,"node"])
+        branches_2 = breakdown_tree(gene2)
+        idx2 = indexin(branches_2[:,"node"],scale_rates[:,"node"])
+        rates_1 = branches_1[idx1,"bl"] ./ scale_rates[:,"bl"]
+        rates_2 = branches_2[idx2,"bl"] ./ scale_rates[:,"bl"]
+        kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
+        if(length(kept_edges)>3)
+            z_1 = zscore(rates_1)
+            z_2 = zscore(rates_2)
+            r2 = cor(z_1[kept_edges],z_2[kept_edges])
+            pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
+        else 
+            #Too few edges with values below cutoff
             r2 = 0.0
             pval = 1.0
-            kept_edges=[]
         end
     else
         #No tip overlap
@@ -119,11 +116,41 @@ end
 
 function reorder_tree(tree::RootedTree,tips)
     sort!(keeptips!(tree,tips))
-    return(Phylo.parsenewick(Phylo.outputtree(tree,Newick())))
+    return(sort!(Phylo.parsenewick(Phylo.outputtree(tree,Newick()))))
 end
 
 function cladewise_order!(tree)
     local tmp = phylo_to_net(tree)
     PhyloNetworks.cladewiseorder!(tmp)
     return(net_to_phylo(tmp))
+end
+
+#Quick breakdown of branches so that each branch is designated by the node it terminates in.
+"""
+    breakdown_tree(tree::Phylo) → DataFrame(bl::Float64,node::String)
+"""
+function breakdown_tree(tree)
+    sum_table=DataFrame(:bl=>missings(Float64,nbranches(tree)),:node=>missings(String,nbranches(tree)))
+    counter=1
+    for n in getnodes(tree)
+        nodes = getdescendant_leaves(tree,n)
+        inbound = getinbound(tree,n)
+        if !isnothing(inbound)
+            bl = getlength(tree,getinbound(tree,n))
+            sum_table[counter,:] = Dict(:bl=>bl,:node=>nodes)
+            counter += 1
+        end
+    end
+    return(sum_table)
+end
+
+function getdescendant_leaves(tree,n)
+    #This isn't ideal, but we rely on the fact that internal nodes are relabeled by Phylo.jl to start with "Node"
+    all_nodes = Phylo.getdescendants(tree,n)
+    if length(all_nodes) > 0
+        nodes = filter(!contains("Node"),[i.name for i in all_nodes])
+        return(join(map(string,sort!(nodes)),','))
+    else
+        return(n.name)
+    end
 end
