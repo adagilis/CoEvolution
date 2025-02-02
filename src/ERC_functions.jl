@@ -24,12 +24,15 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
         keeptips!(gene1,tips_both)
         keeptips!(gene2,tips_both)        
         scale_rates = breakdown_tree(template)
+        rename!(scale_rates,:bl => :bl_sp)
         branches_1 = breakdown_tree(gene1)
-        idx1 = indexin(branches_1[:,"node"],scale_rates[:,"node"])
+        rename!(branches_1,:bl => :bl_1)
         branches_2 = breakdown_tree(gene2)
-        idx2 = indexin(branches_2[:,"node"],scale_rates[:,"node"])
-        rates_1 = branches_1[idx1,"bl"] ./ scale_rates[:,"bl"]
-        rates_2 = branches_2[idx2,"bl"] ./ scale_rates[:,"bl"]
+        rename!(branches_2,:bl => :bl_2)
+        all_branches = leftjoin(leftjoin(scale_rates,branches_1,on=:node),branches_2,on=:node)
+        dropmissing!(all_branches)
+        rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"]
+        rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>3)
             z_1 = zscore(rates_1)

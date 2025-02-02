@@ -46,8 +46,8 @@ Running analysis step 1: calculating ERC scores
 """
 )
 
-trees = filter(contains("rooted.tre"),readdir(datadir("trees"),join=true))
-species_tree = open(parsenewick,datadir("trees","yeast_consensus.tree"))
+trees = filter(contains(".treefile"),readdir(datadir("trees"),join=true))
+species_tree = open(parsenewick,datadir("trees","species_tree.newick"))
 
 println(
 """
@@ -75,7 +75,7 @@ histogram(ERC_res[:,"r2"])
 
 using JLD2
 
-jldsave(datadir("processed","yeast_trees.jld2"),ERC=ERC_res)
+jldsave(datadir("processed","drosophila_trees.jld2"),ERC=ERC_res)
 
 #Run null simulation in background
 
