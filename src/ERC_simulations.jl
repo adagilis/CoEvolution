@@ -8,13 +8,13 @@ using StatsBase
 
 include("Phylo_utilities.jl")
 
-function run_simulations(species_tree,scale,genes,min_tips,max_tips)
+function simulate_tree_set(species_tree,scale,genes,min_tips,max_tips)
     tips = rand(min_tips:max_tips,genes)
-    gene_trees = [simulate_subsampled(species_tree,tips[i],scale) for i in 1:genes]
+    gene_trees = [simulate_subsampled_tree(species_tree,tips[i],scale) for i in 1:genes]
     return(gene_trees)
 end
 
-function simulate_subsampled(species_tree,n,scale)
+function simulate_subsampled_tree(species_tree,n,scale)
     copy_tree = deepcopy(species_tree)
     leaves = getleafnames(copy_tree)
     rand_tips = sample(leaves,n,replace=false)

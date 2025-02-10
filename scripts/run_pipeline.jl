@@ -46,8 +46,8 @@ Running analysis step 1: calculating ERC scores
 """
 )
 
-trees = filter(contains(".treefile"),readdir(datadir("trees"),join=true))
-species_tree = open(parsenewick,datadir("trees","species_tree.newick"))
+trees = filter(contains(".treefile"),readdir(datadir("trees","drosophila"),join=true))
+species_tree = read_tree(datadir("trees","drosophila_consensus.newick"))
 
 println(
 """
@@ -75,10 +75,35 @@ histogram(ERC_res[:,"r2"])
 
 using JLD2
 
-jldsave(datadir("processed","drosophila_trees.jld2"),ERC=ERC_res)
+jldsave(datadir("processed","yeast_trees.jld2"),ERC=ERC_res)
+
+#Generating a network
+
+"""
+Generating network. Assuming genes interact if p-val < 0.05 / $(binomial(length(trees),2)).
+
+Results in $(length(findall(ERC_res[:,"pval"] .< 0.05/binomial(2799,2)))) edges.
+
+Significant edges output to: $(datadir("processed","network.tsv"))
+"""
+
+sub_ERC = ERC_res[ERC_res.pval .< 0.05/binomial(2799,2),:]
+
+using Graphs
+
+
+#writecsv
+
+
+
+
+
+
 
 #Run null simulation in background
 
 
 include(srcdir("ERC_simulations.jl"))
 #Determine cutoffs based on null
+
+
