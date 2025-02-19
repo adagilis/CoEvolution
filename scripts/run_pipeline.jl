@@ -29,10 +29,13 @@ function parse_arguments()
             default=4
             arg_type = Int
         "--project_name","-o"
+            help = "Folder to output ERC results, simulations and plots."
     end
 
     return parse_args(s)
 end
+
+parsed_args = parse_arguments()
 
 include(srcdir("ERC_functions.jl"))
 
@@ -46,8 +49,8 @@ Running analysis step 1: calculating ERC scores
 """
 )
 
-trees = filter(contains(".treefile"),readdir(datadir("trees","drosophila"),join=true))
-species_tree = read_tree(datadir("trees","drosophila_consensus.newick"))
+trees = filter(contains(".treefile"),readdir(parsed_args["tree_dir"]),join=true)
+species_tree = read_tree(parsed_args["species_tree"])
 
 println(
 """
@@ -67,27 +70,30 @@ using UnicodePlots
 println("""
 ERC values calculated! μ = $(mean(ERC_res[:,"r2"])), σ = $(std(ERC_res[:,"r2"])).
 
+$(length(findall(ERC_res.n_edges .< 4))) interactions excluded due to too few edges in trees overlapping.
+
 Distribution:
 """)
 
-histogram(ERC_res[:,"r2"])
+histogram(ERC_res[ERC_res.n_edges .> 0,"r2"])
+
 #Save output into jld2
 
 using JLD2
 
-jldsave(datadir("processed","yeast_trees.jld2"),ERC=ERC_res)
+jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC=ERC_res)
 
 #Generating a network
 
 """
 Generating network. Assuming genes interact if p-val < 0.05 / $(binomial(length(trees),2)).
 
-Results in $(length(findall(ERC_res[:,"pval"] .< 0.05/binomial(2799,2)))) edges.
+Results in $(length(findall(ERC_res[:,"pval"] .< 0.05/binomial(length(trees),2)))) edges.
 
 Significant edges output to: $(datadir("processed","network.tsv"))
 """
 
-sub_ERC = ERC_res[ERC_res.pval .< 0.05/binomial(2799,2),:]
+sub_ERC = ERC_res[ERC_res.pval .< 0.05/binomial(length(trees),2),:]
 
 using Graphs
 
