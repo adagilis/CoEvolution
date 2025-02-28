@@ -70,7 +70,7 @@ function runERC_files(trees,species_tree;cutoff=5)
             tj = read_tree(trees[j])
             index = index_func(i,j,length(trees))
             try
-                ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=5)
+                ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
             catch
                 #println("ERC failed to calculate for $(i), $(j)")
                 #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
@@ -82,6 +82,12 @@ function runERC_files(trees,species_tree;cutoff=5)
     return(ERC_res)
 end
 
+
+"""
+    runERC_collection(trees,species_tree::Phylo;cutoff=5) -> DataTable[i,j,edges_kept,r2,pval]
+    calculates ERC values using the `calculate_ERC` function for all pairs of trees in the trees object.
+"""
+
 function runERC_collection(trees,species_tree;cutoff=5)
     num_comp = binomial(length(trees),2)
     p = Progress(num_comp,desc="Calculating ERC scores:")
@@ -90,7 +96,7 @@ function runERC_collection(trees,species_tree;cutoff=5)
         if(j>i)
             index = index_func(i,j,length(trees))
             try
-                ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=5)
+                ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=cutoff)
             catch
                 #println("ERC failed to calculate for $(i), $(j)")
                 ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>0,:r2 => -1,:pval =>-1)
@@ -101,6 +107,11 @@ function runERC_collection(trees,species_tree;cutoff=5)
     return(ERC_res)
 end
 
+
+"""
+    index_func(i,j,n) -> Int
+    returns the index of the pair i and j among n choose 2 elements.
+"""
 function index_func(i,j,n)
     k = 0
     if(i>1)
@@ -109,51 +120,11 @@ function index_func(i,j,n)
     return(k+j-i)
 end
 
+
+"""
+    zscore([x]) -> [z]
+    returns the z-scores of a vector
+"""
 function zscore(x)
     return((x .- mean(x))./ std(x))
-end
-
-function get_branch_lengths(tree)
-    return([e.length for e in getbranches(tree)])
-end
-
-function reorder_tree(tree::RootedTree,tips)
-    sort!(keeptips!(tree,tips))
-    return(sort!(Phylo.parsenewick(Phylo.outputtree(tree,Newick()))))
-end
-
-function cladewise_order!(tree)
-    local tmp = phylo_to_net(tree)
-    PhyloNetworks.cladewiseorder!(tmp)
-    return(net_to_phylo(tmp))
-end
-
-#Quick breakdown of branches so that each branch is designated by the node it terminates in.
-"""
-    breakdown_tree(tree::Phylo) → DataFrame(bl::Float64,node::String)
-"""
-function breakdown_tree(tree)
-    sum_table=DataFrame(:bl=>missings(Float64,nbranches(tree)),:node=>missings(String,nbranches(tree)))
-    counter=1
-    for n in getnodes(tree)
-        nodes = getdescendant_leaves(tree,n)
-        inbound = getinbound(tree,n)
-        if !isnothing(inbound)
-            bl = getlength(tree,getinbound(tree,n))
-            sum_table[counter,:] = Dict(:bl=>bl,:node=>nodes)
-            counter += 1
-        end
-    end
-    return(sum_table)
-end
-
-function getdescendant_leaves(tree,n)
-    #This isn't ideal, but we rely on the fact that internal nodes are relabeled by Phylo.jl to start with "Node"
-    all_nodes = Phylo.getdescendants(tree,n)
-    if length(all_nodes) > 0
-        nodes = filter(!contains("Node"),[i.name for i in all_nodes])
-        return(join(map(string,sort!(nodes)),','))
-    else
-        return(n.name)
-    end
 end
