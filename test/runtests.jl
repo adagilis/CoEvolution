@@ -31,7 +31,7 @@ include(srcdir("ERC_simulations.jl"))
 println("Testing ERC_simulations.jl")
 ti = time()
 @testset "ERC_simulations tests" begin
-    trees_simulated = run_simulations(species_tree,0.01,100,length(getleaves(species_tree)),length(getleaves(species_tree)))
+    trees_simulated = simulate_tree_set(species_tree,0.01,100,length(getleaves(species_tree)),length(getleaves(species_tree)))
     ERC_simulation = runERC_collection(trees_simulated,species_tree)
 end
 

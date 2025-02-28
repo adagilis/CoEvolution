@@ -18,7 +18,7 @@ function simulate_subsampled_tree(species_tree,n,scale)
     copy_tree = deepcopy(species_tree)
     leaves = getleafnames(copy_tree)
     rand_tips = sample(leaves,n,replace=false)
-    reorder_tree(copy_tree,rand_tips)
+    keeptips!(copy_tree,rand_tips)
     rescale_tree!(copy_tree,scale)
     net = phylo_to_net(copy_tree)
     sim = simulatecoalescent(net,1,1;nodemapping=true)[1]
