@@ -16,11 +16,11 @@ t3 = read_tree(trees[3])
 t4 = read_tree(trees[4])
 @testset "ERC functions tests" begin
     @test 1 == 1
-    @test calculate_ERC(1,2,t1,t2,species_tree;cutoff=5)[:r2] == 1
-    @test calculate_ERC(1,3,t1,t3,species_tree;cutoff=5)[:r2] == 1
-    @test calculate_ERC(1,3,t2,t3,species_tree;cutoff=5)[:r2] == 1 
-    @test calculate_ERC(3,4,t3,t4,species_tree;cutoff=5)[:r2] == 1 
-    @test runERC_files(trees,species_tree)[:,:r2] == [1,1,1,1,1,1]
+    @test calculate_ERC(1,2,t1,t2,species_tree;cutoff=5)[:r] == 1
+    @test calculate_ERC(1,3,t1,t3,species_tree;cutoff=5)[:r] == 1
+    @test calculate_ERC(1,3,t2,t3,species_tree;cutoff=5)[:r] == 1 
+    @test calculate_ERC(3,4,t3,t4,species_tree;cutoff=5)[:r] == 1 
+    @test runERC_files(trees,species_tree)[:,:r] == [1,1,1,1,1,1]
 end
 
 ti = time() - ti

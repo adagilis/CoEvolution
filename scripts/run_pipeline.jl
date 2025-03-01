@@ -64,20 +64,20 @@ ERC_res = runERC_files(trees,species_tree)
 using UnicodePlots
 
 println("""
-ERC values calculated! μ = $(mean(ERC_res[:,"r2"])), σ = $(std(ERC_res[:,"r2"])).
+ERC values calculated! μ = $(mean(ERC[:,"r"])), σ = $(std(ERC[:,"r"])).
 
-$(length(findall(ERC_res.n_edges .< 4))) interactions excluded due to too few edges in trees overlapping.
+$(length(findall(ERC.n_edges .< 4))) interactions excluded due to too few edges in trees overlapping.
 
 Distribution:
 """)
 
-histogram(ERC_res[ERC_res.n_edges .> 0,"r2"])
+histogram(ERC[ERC.n_edges .> 0,"r2"])
 
 #Save output into jld2
 
 using JLD2
 
-jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC=ERC_res)
+jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC=ERC)
 
 """
 Project saved, now running null simulations based on species_tree for $(parsed_args["simulations"]) simulations
@@ -90,7 +90,7 @@ ERC_null = calculate_ERC_exp_null(species_tree,parsed_args["simulations"])
 
 jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC_null=ERC_null)
 
-limits = quantile(ERC_null.r2,[0.0275,0.975])
+limits = quantile(ERC_null.r,[0.0275,0.975])
 
 """
 Null simulations produced, cut-offs for top/bottom 2.5% are: $(limits).
@@ -98,19 +98,19 @@ Null simulations produced, cut-offs for top/bottom 2.5% are: $(limits).
 Discarding values withing 95% of null in real data results in $(length(intersect(findall(ERC.r2 .> limits[1]),findall(ERC.r2 .< limits[2])))) values.
 """
 
-sub_ERC = ERC[intersect(findall(ERC.r2 .> limits[1]),findall(ERC.r2 .< limits[2])),:]
+sub_ERC = ERC[union(findall(ERC.r .< limits[1]),findall(ERC.r .> limits[2])),:]
 
 #Generating a network
 
 """
-Generating network. Assuming genes interact if p-val < 0.05 / $(length(sub_ERC.r2)).
+Generating network. Assuming genes interact if p-val < 0.05 / $(length(sub_ERC.r)).
 
-Results in $(length(findall(ERC_res[:,"pval"] .< 0.05/length(sub_ERC.r2)))) edges.
+Results in $(length(findall(sub_ERC.pval .< 0.05/length(sub_ERC.r)))) edges.
 
 Significant edges output to: $(datadir("processed","network.tsv"))
 """
 
-sub_ERC = ERC_res[ERC_res.pval .< 0.05/length(sub_ERC.r2),:]
+sub_ERC = ERC_res[ERC_res.pval .< 0.05/length(sub_ERC.r),:]
 
 include(srcdir("Graphs_utilities.jl"))
 

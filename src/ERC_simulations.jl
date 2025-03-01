@@ -9,7 +9,7 @@ using Distributions
 using LinearAlgebra
 
 include("Phylo_utilities.jl")
-include("Stats_functions.jl")
+include("Stats_utilities.jl")
 
 function simulate_tree_set(species_tree,scale,genes,min_tips,max_tips)
     tips = rand(min_tips:max_tips,genes)
