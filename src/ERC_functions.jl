@@ -106,25 +106,3 @@ function runERC_collection(trees,species_tree;cutoff=5)
     end
     return(ERC_res)
 end
-
-
-"""
-    index_func(i,j,n) -> Int
-    returns the index of the pair i and j among n choose 2 elements.
-"""
-function index_func(i,j,n)
-    k = 0
-    if(i>1)
-        k = (i-1)*n-sum(1:i .- 1)
-    end
-    return(k+j-i)
-end
-
-
-"""
-    zscore([x]) -> [z]
-    returns the z-scores of a vector
-"""
-function zscore(x)
-    return((x .- mean(x))./ std(x))
-end

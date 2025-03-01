@@ -24,10 +24,6 @@ function parse_arguments()
             help = "number of gene trees to simulate, exponential run time with increased simulations (default = 1000)"
             arg_type = Int
             default = 1000
-        "--positive_sim_branches","-n"
-            help = "Number of branches with correlated rates for positive simulation subset (default 4). Currently non-functional."
-            default=4
-            arg_type = Int
         "--project_name","-o"
             help = "Folder to output ERC results, simulations and plots."
     end
@@ -83,33 +79,46 @@ using JLD2
 
 jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC=ERC_res)
 
+"""
+Project saved, now running null simulations based on species_tree for $(parsed_args["simulations"]) simulations
+"""
+
+include(srcdir("ERC_simulations.jl"))
+#Determine cutoffs based on null
+
+ERC_null = calculate_ERC_exp_null(species_tree,parsed_args["simulations"])
+
+jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC_null=ERC_null)
+
+limits = quantile(ERC_null.r2,[0.0275,0.975])
+
+"""
+Null simulations produced, cut-offs for top/bottom 2.5% are: $(limits).
+
+Discarding values withing 95% of null in real data results in $(length(intersect(findall(ERC.r2 .> limits[1]),findall(ERC.r2 .< limits[2])))) values.
+"""
+
+sub_ERC = ERC[intersect(findall(ERC.r2 .> limits[1]),findall(ERC.r2 .< limits[2])),:]
+
 #Generating a network
 
 """
-Generating network. Assuming genes interact if p-val < 0.05 / $(binomial(length(trees),2)).
+Generating network. Assuming genes interact if p-val < 0.05 / $(length(sub_ERC.r2)).
 
-Results in $(length(findall(ERC_res[:,"pval"] .< 0.05/binomial(length(trees),2)))) edges.
+Results in $(length(findall(ERC_res[:,"pval"] .< 0.05/length(sub_ERC.r2)))) edges.
 
 Significant edges output to: $(datadir("processed","network.tsv"))
 """
 
-sub_ERC = ERC_res[ERC_res.pval .< 0.05/binomial(length(trees),2),:]
+sub_ERC = ERC_res[ERC_res.pval .< 0.05/length(sub_ERC.r2),:]
 
-using Graphs
+include(srcdir("Graphs_utilities.jl"))
 
+graph = construct_ERC_graph(sub_ERC)
 
 #writecsv
 
 
 
-
-
-
-
-#Run null simulation in background
-
-
-include(srcdir("ERC_simulations.jl"))
-#Determine cutoffs based on null
 
 
