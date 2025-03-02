@@ -33,13 +33,17 @@ end
 
 parsed_args = parse_arguments()
 
+isdir(parsed_args["project_name"]) || mkdir(parsed_args["project_name"])
+
 include(srcdir("ERC_functions.jl"))
 
 println(
 """
-Currently active project is: $(projectname())
+Currently active project is: $(parsed_args["project_name"])
 
 Path of active project: $(projectdir())
+
+Outputs being written to: $(parsed_args["project_name"])
 
 Running analysis step 1: calculating ERC scores
 """
@@ -50,14 +54,14 @@ species_tree = read_tree(parsed_args["species_tree"])
 
 println(
 """
-Found $(length(trees)) in `data/trees` directory, loaded in species tree.
+Found $(length(trees)) in $(parsed_args["tree_dir"]) directory, loaded in species tree.
 
 Running $(binomial(length(trees),2)) comparisons.
 """
 )
 
 
-ERC_res = runERC_files(trees,species_tree)
+ERC = runERC_files(trees,species_tree)
 
 
 #Quick report of results
@@ -71,13 +75,13 @@ $(length(findall(ERC.n_edges .< 4))) interactions excluded due to too few edges 
 Distribution:
 """)
 
-histogram(ERC[ERC.n_edges .> 0,"r2"])
+histogram(ERC[ERC.n_edges .> 0,"r"])
 
 #Save output into jld2
 
 using JLD2
 
-jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC=ERC)
+jldsave(parsed_args["project_name"]*"/ERC_stats.jld2",ERC=ERC)
 
 """
 Project saved, now running null simulations based on species_tree for $(parsed_args["simulations"]) simulations
@@ -88,7 +92,7 @@ include(srcdir("ERC_simulations.jl"))
 
 ERC_null = calculate_ERC_exp_null(species_tree,parsed_args["simulations"])
 
-jldsave(datadir(parsed_args["project_name"],"ERC_stats.jld2"),ERC_null=ERC_null)
+jldsave(parsed_args["project_name"]*"/ERC_nulls.jld2",ERC_null=ERC_null)
 
 limits = quantile(ERC_null.r,[0.0275,0.975])
 
@@ -107,14 +111,16 @@ Generating network. Assuming genes interact if p-val < 0.05 / $(length(sub_ERC.r
 
 Results in $(length(findall(sub_ERC.pval .< 0.05/length(sub_ERC.r)))) edges.
 
-Significant edges output to: $(datadir("processed","network.tsv"))
+Significant edges output to: $(parsed_args["project_name"]*"/network.tsv"))
 """
 
-sub_ERC = ERC_res[ERC_res.pval .< 0.05/length(sub_ERC.r),:]
+sub_ERC = ERC[ERC.pval .< 0.05/length(sub_ERC.r),:]
 
-include(srcdir("Graphs_utilities.jl"))
+CSV.write(parsed_args["project_name"]*"/significant_edges.csv",sub_ERC)
 
-graph = construct_ERC_graph(sub_ERC)
+#include(srcdir("Graphs_utilities.jl"))
+
+#graph = construct_ERC_graph(sub_ERC)
 
 #writecsv
 

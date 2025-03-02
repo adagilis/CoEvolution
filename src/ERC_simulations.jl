@@ -40,6 +40,6 @@ function calculate_ERC_exp_null(species_tree,n)
     end
     #calculate ERC for whole dataset
     zs = stack(zscores.(eachcol(sampled_bls)))
-    cor_table = cor_test_matrix(zs)
+    cor_table = cor_test_matrix(zs,2)
     return(cor_table)
 end
