@@ -1,7 +1,13 @@
 using DrWatson
 @quickactivate "CoEvolution"
 
-println("Analysis pipeline for Evolutionary Rate Correlations including null simulations.")
+"""
+
+Analysis pipeline for Evolutionary Rate Correlations including null simulations.
+
+Step 1: Initializing packages and precompiling code.
+
+"""
 
 using ArgParse, JLD2
 function parse_arguments()
@@ -39,22 +45,24 @@ include(srcdir("ERC_functions.jl"))
 
 println(
 """
+Successfuly precompiled!
+
 Currently active project is: $(parsed_args["project_name"])
 
 Path of active project: $(projectdir())
 
 Outputs being written to: $(parsed_args["project_name"])
 
-Running analysis step 1: calculating ERC scores
+Running step 2: calculating ERC scores
 """
 )
 
-trees = filter(contains(".treefile"),readdir(parsed_args["tree_dir"]),join=true)
+trees = filter(contains(".treefile"),readdir(parsed_args["tree_dir"],join=true))
 species_tree = read_tree(parsed_args["species_tree"])
 
 println(
 """
-Found $(length(trees)) in $(parsed_args["tree_dir"]) directory, loaded in species tree.
+Found $(length(trees)) in $(parsed_args["tree_dir"]), loaded in species tree.
 
 Running $(binomial(length(trees),2)) comparisons.
 """
@@ -84,7 +92,9 @@ using JLD2
 jldsave(parsed_args["project_name"]*"/ERC_stats.jld2",ERC=ERC)
 
 """
-Project saved, now running null simulations based on species_tree for $(parsed_args["simulations"]) simulations
+Project saved! 
+
+Step 3: running null simulations based on species_tree for $(parsed_args["simulations"]) simulations
 """
 
 include(srcdir("ERC_simulations.jl"))
@@ -99,7 +109,7 @@ limits = quantile(ERC_null.r,[0.0275,0.975])
 """
 Null simulations produced, cut-offs for top/bottom 2.5% are: $(limits).
 
-Discarding values withing 95% of null in real data results in $(length(intersect(findall(ERC.r2 .> limits[1]),findall(ERC.r2 .< limits[2])))) values.
+Discarding values withing 95% of null in real data results in $(length(intersect(findall(ERC.r .> limits[1]),findall(ERC.r .< limits[2])))) values.
 """
 
 sub_ERC = ERC[union(findall(ERC.r .< limits[1]),findall(ERC.r .> limits[2])),:]
@@ -107,7 +117,9 @@ sub_ERC = ERC[union(findall(ERC.r .< limits[1]),findall(ERC.r .> limits[2])),:]
 #Generating a network
 
 """
-Generating network. Assuming genes interact if p-val < 0.05 / $(length(sub_ERC.r)).
+Step 4: Generating network. 
+
+Assuming genes interact if outside 95% expected from null, and p-val < 0.05 / $(length(sub_ERC.r)).
 
 Results in $(length(findall(sub_ERC.pval .< 0.05/length(sub_ERC.r)))) edges.
 

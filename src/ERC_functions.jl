@@ -36,8 +36,8 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
         rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>3)
-            z_1 = zscore(rates_1)
-            z_2 = zscore(rates_2)
+            z_1 = zscores(rates_1)
+            z_2 = zscores(rates_2)
             r = cor(z_1[kept_edges],z_2[kept_edges])
             pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
         else 
