@@ -18,7 +18,7 @@ end
 
 function diamond_makedb(db,path)
     loc= path*db
-    cmd = `diamond makedb --in $loc`
+    cmd = `diamond makedb --in $loc -o $path/$db`
     try
         run(cmd)
     catch
@@ -51,10 +51,14 @@ function build_orth_files(rbh,path)
     uniqseq = unique(rbh.i)
     for i in uniqseq
         subrbh = rbh[rbh.i==i,:]
+        infile = path*subrbh.species1[1]
         outfile = path*subrbh.species1[1]*subrbh.i[1]*".fasta"
-        #bedtools command
-        
-        for orth in uniqseq
+        #grab sequence from species fasta
+        run(`echo ">$i >> $outfile`)
+        run(`grep -A1 '$i' $infile >> $outfile`)
+        for orth in 1:length(subrbh.i)
+            seq_name = subrbh.species2[orth]
+
             #append sequence to outfile
         end
     end
