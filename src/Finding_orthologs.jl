@@ -9,8 +9,8 @@ using ProgressMeter
 """
 
 function diamond_blastp(db,query,path)
-    outname = path*db*"_"*query*".blastp.tsv"
-    dbname = path*db*".dmnd"
+    outname = path*"blast/"*db*"_"*query*".blastp.tsv"
+    dbname = path*"blast/"*db*".dmnd"
     query_seq= path*query*".faa"
     try
         isfile(dbname) || diamond_makedb(db,path)
@@ -30,8 +30,9 @@ end
 
 
 function diamond_makedb(db,path)
+    isdir(path*"blast/") || mkdir(path*"blast/")
     loc= path*db*".faa"
-    out= path*db
+    out= path*"blast/"*db
     cmd = `diamond makedb --in $loc -d $out`
     try
         run(cmd)
@@ -48,8 +49,8 @@ end
 """
 
 function rbh(species1,species2,path)
-    filename1 = path*species1*"_"*species2*".blastp.tsv"
-    filename2 = path*species2*"_"*species1*".blastp.tsv"
+    filename1 = path*"blast/"*species1*"_"*species2*".blastp.tsv"
+    filename2 = path*"blast/"*species2*"_"*species1*".blastp.tsv"
     try
         isfile(filename1) || diamond_blastp(species1,species2,path)
         isfile(filename2) || diamond_blastp(species2,species1,path)

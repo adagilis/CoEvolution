@@ -10,6 +10,16 @@ done
 
 datasets download genome taxon $taxon --assembly-level chromosome --include protein,gtf,gff --filename $taxon.zip 
 
+
+unzip $taxon.zip
+
+cd ncbi_dataset/data
+for i in GCF*;
+do
+    mv $i/protein.faa $i.faa
+    mv $i/genomic.gff $i.gff
+done
+
 #Rename files to species names. This may overwrite some files if multiple assemblies per species were downloaded, use at own discretion.
 
 for i in *.faa;
