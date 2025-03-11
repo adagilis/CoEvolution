@@ -9,6 +9,7 @@
 /notebooks
 /_research
 /drosophila
+/test/data/aligned
 
 ################################################################################
 #                                    Julia                                     #
@@ -418,3 +419,10 @@ $RECYCLE.BIN/
 .vscode/settings.json
 melanogaster_network.svg
 
+
+
+#Sequence files
+
+*.faa
+*.dmnd
+*.blastp.tsv

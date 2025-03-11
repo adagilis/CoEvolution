@@ -148,10 +148,7 @@ end
 
 while states[:current_step]==2
     include(srcdir("finding_orthologs.jl"))
-    for q in setdiff(species,focal)
-        rbh(focal,q,path)
-        
-    end
+
 
     states[:current_step] = 3
 end
