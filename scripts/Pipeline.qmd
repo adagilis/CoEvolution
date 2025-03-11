@@ -1,0 +1,62 @@
+---
+title: "Pipeline example"
+format: html
+---
+
+# Introduction
+
+This file shows how to utilize the pipeline built here to generate an ERC network for some species of interest. In this case, we will be focusing on *D. melanogaster* and utilizing all annotated Dipteran genomes available on ncbi, alongside *C. felis* as an outgroup. We assume that you are using some form of Unix, but the pipeline has been tested on Ubuntu running in WSL2. It _should_ work in both Windows and on MacOS, assuming all necessary software is installed and visible to your CLI. 
+
+### Getting data
+
+ We first download the data, which can be made easier using the `download_and_rename_genomes.sh` script available in `scr`. Note, this script requires ncbi's `datasets-cli` command line utility. Find it [here](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/), for now, before inevitable NCBI budget cuts remove access to the data.
+
+
+# Initializing the software, installing all dependencies.
+
+Before we run any analyses, we will require several tools.
+1) Julia v 1.11+
+
+Once Julia is installed, run the below script:
+```{julia}
+using Pkg
+Pkg.add("DrWatson")
+Pkg.activate("CoEvolution/")
+Pkg.instantiate()
+```
+
+This might run for a while, as it will compile any necessary packages for later scripts. While that is running, install the following on your system.
+
+2) [Muscle v5+](https://github.com/rcedgar/muscle/releases)
+3) [Diamond](https://github.com/bbuchfink/diamond/wiki)
+4) [iqTree2](http://www.iqtree.org/#download)
+
+Hopefully Julia is up and running at this point, so we can begin on the main steps of the analysis
+
+# Finding orthologs for focal species.
+
+We first identify orthologous sequences for all genes within the focal species. This is done in the following code block, most functions are defined in the `src\Finding_orthologs.jl` script. Fill out parameters in the blanks below to point to the correct files.
+
+```{julia}
+using DrWatson
+@quickactivate CoEvolution
+include(srcdir("Finding_orthologs.jl"))
+include(srcdir("ERC_functions.jl"))
+#Set these values for your own analysis
+data_dir = "data/diptera"
+focal= "D_melanogaster"
+outgroup = "C_felis"
+
+#Now run the below, and go off to grab some tea, or take a break for the day.
+species = replace.(filter(endswith(".faa"),readdir(data_dir)),r".faa"=>"")
+all_orthologs = find_orths(focal,species,data_dir)
+
+#If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir`, and run it again. It will only run analyses for missing pairs of species.
+
+
+```
+
+
+
+
+

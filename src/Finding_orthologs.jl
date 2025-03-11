@@ -121,6 +121,16 @@ function build_orth_files(rbh_res,path;cutoff=3)
     end
 end
 
+"""
+    append_seq(seq,species,species_file,file) 
+    Appends the sequence `seq` from `species` into `file`. Requires `species_file` to exist, and needs `seqkit`.
+    Appends the sequence as: 
+    ```{fasta}
+    >species
+    Sequence
+    ```
+"""
+
 function append_seq(seq,species,species_file,file)
     run(pipeline(`echo ">$species"`;stdout=file,append=true))
     run(pipeline(pipeline(`seqkit grep -p "$seq" $species_file`,`grep -v "$seq"`);stdout=file,append=true))
