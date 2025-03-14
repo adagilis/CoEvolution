@@ -39,21 +39,24 @@ We first identify orthologous sequences for all genes within the focal species. 
 
 ```{julia}
 using DrWatson
-@quickactivate CoEvolution
+@quickactivate "CoEvolution/"
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 #Set these values for your own analysis
-data_dir = "data/diptera"
+data_dir = "data/dipterans/"
 focal= "D_melanogaster"
 outgroup = "C_felis"
 
 #Now run the below, and go off to grab some tea, or take a break for the day.
-species = replace.(filter(endswith(".faa"),readdir(data_dir)),r".faa"=>"")
+species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
 
+using JLD2
+
+jldsave(data_dir*"orthologs.jld2",orhts=all_orthologs)
+
+build_orth_files(all_orthologs,data_dir)
 #If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir`, and run it again. It will only run analyses for missing pairs of species.
-
-
 ```
 
 

@@ -11,7 +11,7 @@ using ProgressMeter
 function diamond_blastp(db,query,path)
     outname = path*"blast/"*db*"_"*query*".blastp.tsv"
     dbname = path*"blast/"*db*".dmnd"
-    query_seq= path*query*".faa"
+    query_seq= path*"seqs/"*query*".faa"
     try
         isfile(dbname) || diamond_makedb(db,path)
         cmd = `diamond blastp -f 6 --iterate -k 1 -d $dbname -q $query_seq -o $outname`
@@ -31,7 +31,7 @@ end
 
 function diamond_makedb(db,path)
     isdir(path*"blast/") || mkdir(path*"blast/")
-    loc= path*db*".faa"
+    loc= path*"seqs/"*db*".faa"
     out= path*"blast/"*db
     cmd = `diamond makedb --in $loc -d $out`
     try
@@ -98,7 +98,7 @@ function build_orth_files(rbh_res,path;cutoff=3)
     outpath=path*"aligned/"
     isdir(outpath) || mkdir(outpath)
     focal = rbh_res.species1[1]
-    infile = path*focal*".faa"
+    infile = path*"seqs/"*focal*".faa"
     uniqseq = unique(rbh_res.i)
     p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences")
     for i in uniqseq
@@ -109,7 +109,7 @@ function build_orth_files(rbh_res,path;cutoff=3)
             append_seq(i,focal,infile,outfile)
             for orth in 1:length(subrbh.i)
                 species_name = subrbh.species2[orth]
-                species_file = path*species_name*".faa"
+                species_file = path*"seqs/"*species_name*".faa"
                 seq_name = subrbh.j[orth]
                 append_seq(seq_name,species_name,species_file,outfile)
                 #append sequence to outfile

@@ -1,10 +1,11 @@
 #!/bin/bash
 
-while getopts t:o: option
+mkdir seqs
+
+while getopts t: option
 do
     case "${option}"
         t) taxon=${OPTARG};;
-        o) output=${OPTARG};;
     esac
 done
 
@@ -28,3 +29,10 @@ done >> cmds.txt
 
 #Separated out in case you want to comment the below out to check before executing manually. Good when you want specific name changes, etc.
 cat cmds.txt | sh
+
+mv *.faa ../../seqs
+mv *.gff ../../seqs
+
+cd ../..
+
+rm -r ncbi_datasets
