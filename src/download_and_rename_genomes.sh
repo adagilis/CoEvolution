@@ -5,11 +5,12 @@ mkdir seqs
 while getopts t: option
 do
     case "${option}"
+	in
         t) taxon=${OPTARG};;
     esac
 done
 
-datasets download genome taxon $taxon --assembly-level chromosome --include protein,gtf,gff --filename $taxon.zip 
+datasets download genome taxon $taxon --assembly-level chromosome --include protein,gff3 --filename $taxon.zip 
 
 
 unzip $taxon.zip

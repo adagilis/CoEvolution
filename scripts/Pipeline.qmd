@@ -21,7 +21,7 @@ Once Julia is installed, run the below script:
 ```{julia}
 using Pkg
 Pkg.add("DrWatson")
-Pkg.activate("CoEvolution/")
+Pkg.activate("CoEvolution")
 Pkg.instantiate()
 ```
 
@@ -39,7 +39,7 @@ We first identify orthologous sequences for all genes within the focal species. 
 
 ```{julia}
 using DrWatson
-@quickactivate "CoEvolution/"
+@quickactivate "CoEvolution"
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 #Set these values for your own analysis
@@ -57,6 +57,13 @@ jldsave(data_dir*"orthologs.jld2",orhts=all_orthologs)
 
 build_orth_files(all_orthologs,data_dir)
 #If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir`, and run it again. It will only run analyses for missing pairs of species.
+aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/",join=true))
+for seq in aligned_genes
+    cmd = `iqtree2 -s $seq -ntmax 20 -quiet`
+    run(cmd)
+end
+
+
 ```
 
 

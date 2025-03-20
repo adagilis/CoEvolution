@@ -1,5 +1,6 @@
 using CSV, DataFrames
 using ProgressMeter
+using FLoops
 
 #general functions to generate diamond calls and identify reciprocal best hits from outputs
 
@@ -14,7 +15,7 @@ function diamond_blastp(db,query,path)
     query_seq= path*"seqs/"*query*".faa"
     try
         isfile(dbname) || diamond_makedb(db,path)
-        cmd = `diamond blastp -f 6 --iterate -k 1 -d $dbname -q $query_seq -o $outname`
+        cmd = `diamond blastp --threads 4 -f 6 --iterate -k 1 -d $dbname -q $query_seq -o $outname`
         run(cmd)
     catch
         """
@@ -80,7 +81,7 @@ function find_orths(focal,species_list,path)
     rbh_res = DataFrame(species1=String[],species2=String[],i=String[],j=String[])
     oldstd=stderr
     redirect_stderr(devnull)
-    for s2 in filter(e->e!=focal,species_list)
+    @floop ThreadedEx() for s2 in filter(e->e!=focal,species_list)
         rbh_res=vcat(rbh_res,rbh(focal,s2,path))
         next!(p)
     end
