@@ -9,7 +9,7 @@ This file shows how to utilize the pipeline built here to generate an ERC networ
 
 ### Getting data
 
- We first download the data, which can be made easier using the `download_and_rename_genomes.sh` script available in `scr`. Note, this script requires ncbi's `datasets-cli` command line utility. Find it [here](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/), for now, before inevitable NCBI budget cuts remove access to the data.
+ We first download the data, which can be made easier using the `download_and_rename_genomes.sh` script available in `scr`. Note, this script requires ncbi's `datasets-cli` command line utility. Find it [here](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/), for now, before inevitable NCBI budget cuts remove access to the data. It will also require the ncbi esearch tools, installation information found [here](https://www.ncbi.nlm.nih.gov/books/NBK179288/)
 
 
 # Initializing the software, installing all dependencies.
@@ -50,17 +50,26 @@ outgroup = "C_felis"
 #Now run the below, and go off to grab some tea, or take a break for the day.
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
-
+#If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir\blast` directory, and run it again. It will only run analyses for missing pairs of species.
 using JLD2
 
-jldsave(data_dir*"orthologs.jld2",orhts=all_orthologs)
+jldsave(data_dir*"orthologs.jld2",orths=all_orthologs)
+#And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=jldopen(data_dir*"orthologs.jld2")[orths]`
+
+#The next step takes the longest, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
 
 build_orth_files(all_orthologs,data_dir)
-#If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir`, and run it again. It will only run analyses for missing pairs of species.
+
+#Finally, we generate a tree for each gene. Earlier versions we constrained the tree topology, which was faster, but does not allow us to do certain secondary analyses that we will want to. 
+using FLoops
+using ProgressMeter
+
 aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/",join=true))
-for seq in aligned_genes
-    cmd = `iqtree2 -s $seq -ntmax 20 -quiet`
+p=Progress(length(aligned_genes),desc="Running IQTree2")
+@floop ThreadedEx() for seq in aligned_genes
+    cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
     run(cmd)
+    next!(p)
 end
 
 

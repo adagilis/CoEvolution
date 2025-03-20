@@ -13,11 +13,15 @@ function diamond_blastp(db,query,path)
     outname = path*"blast/"*db*"_"*query*".blastp.tsv"
     dbname = path*"blast/"*db*".dmnd"
     query_seq= path*"seqs/"*query*".faa"
+    oldstd=stderr
     try
+        redirect_stderr(devnull)
         isfile(dbname) || diamond_makedb(db,path)
         cmd = `diamond blastp --threads 4 -f 6 --iterate -k 1 -d $dbname -q $query_seq -o $outname`
         run(cmd)
+        redirect_stderr(oldstd)
     catch
+        redirect_stderr(oldstd)
         """
         Could not run blastp using diamond. Check if database exists, and query files are correctly specified.
         """
@@ -35,9 +39,13 @@ function diamond_makedb(db,path)
     loc= path*"seqs/"*db*".faa"
     out= path*"blast/"*db
     cmd = `diamond makedb --in $loc -d $out`
+    oldstd=stderr
     try
+        redirect_stderr(devnull)
         run(cmd)
+        redirect_stderr(oldstd)
     catch
+        redirect_stderr(oldstd)
         """
         Could not run diamond. Check if sequence exists in working directory!
         """
@@ -79,13 +87,10 @@ end
 function find_orths(focal,species_list,path)
     p=Progress(length(species_list)-1,desc="Running RBH comparisons")
     rbh_res = DataFrame(species1=String[],species2=String[],i=String[],j=String[])
-    oldstd=stderr
-    redirect_stderr(devnull)
-    @floop ThreadedEx() for s2 in filter(e->e!=focal,species_list)
+    for s2 in filter(e->e!=focal,species_list)
         rbh_res=vcat(rbh_res,rbh(focal,s2,path))
         next!(p)
     end
-    redirect_stderr(oldstd)
     return(rbh_res)
 end
 
@@ -95,14 +100,17 @@ end
     Will not output sequences when there are fewer than `cutoff` (default=4) species with the ortholog, as these will not be useful for generating branch lengths either way.
 """
 
-function build_orth_files(rbh_res,path;cutoff=3)
+function build_orth_files(rbh_res,path;cutoff=4)
     outpath=path*"aligned/"
     isdir(outpath) || mkdir(outpath)
     focal = rbh_res.species1[1]
     infile = path*"seqs/"*focal*".faa"
     uniqseq = unique(rbh_res.i)
-    p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences")
-    for i in uniqseq
+    """
+    Found $(length(uniqseq)) sequences with at least one RBH.
+    """
+    p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences (default = 4)")
+    @floop ThreadedEx() for i in uniqseq
         subrbh = rbh_res[rbh_res.i.==i,:]
         if length(subrbh.species2) >= cutoff
             outfile = outpath*i*".fasta"
@@ -116,7 +124,7 @@ function build_orth_files(rbh_res,path;cutoff=3)
                 #append sequence to outfile
             end
             aligned_out = replace(outfile,r".fasta" => s".aligned.fasta")
-            run(`muscle -align $outfile -output $aligned_out`)
+            run(pipeline(`mafft --auto $outfile`;stdout=aligned_out))
             run(`rm $outfile`)
         end
         next!(p)

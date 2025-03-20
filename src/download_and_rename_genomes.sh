@@ -36,4 +36,5 @@ mv *.gff ../../seqs
 
 cd ../..
 
-rm -r ncbi_datasets
+rm -rf ncbi_datasets/
+
