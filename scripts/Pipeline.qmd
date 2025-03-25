@@ -43,7 +43,7 @@ using DrWatson
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 #Set these values for your own analysis
-data_dir = "data/dipterans/"
+data_dir = datadir("dipterans/")
 focal= "D_melanogaster"
 outgroup = "C_felis"
 
@@ -64,11 +64,22 @@ build_orth_files(all_orthologs,data_dir)
 using FLoops
 using ProgressMeter
 
-aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/",join=true))
+isdir(data_dir*"trees/") || mkdir(data_dir*"trees/")
+
+aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/"))
+finished_trees = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/")),r".treefile"=>s"")
+
+todo = data_dir*"aligned/".*setdiff(aligned_genes, finished_trees)
+
 p=Progress(length(aligned_genes),desc="Running IQTree2")
 @floop ThreadedEx() for seq in aligned_genes
     cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
     run(cmd)
+    treefile_old = $seq*".treefile"
+    treefile_new = replace(replace($seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
+    cmd2 = `mv $treefile_old $treefile_new`
+    run(cmd2)
+    run(`rm $seq.*`)
     next!(p)
 end
 
