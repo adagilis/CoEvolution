@@ -71,15 +71,21 @@ finished_trees = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/"
 
 todo = data_dir*"aligned/".*setdiff(aligned_genes, finished_trees)
 
-p=Progress(length(aligned_genes),desc="Running IQTree2")
-@floop ThreadedEx() for seq in aligned_genes
+p=Progress(length(todo),desc="Running IQTree2")
+@floop ThreadedEx() for seq in todo
     cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
-    run(cmd)
-    treefile_old = $seq*".treefile"
-    treefile_new = replace(replace($seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
+    run(pipeline(cmd;stderr=devnull))
+    treefile_old = seq*".treefile"
+    treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
     cmd2 = `mv $treefile_old $treefile_new`
     run(cmd2)
-    run(`rm $seq.*`)
+    try
+        run(`rm $seq.mldist`)
+        run(`rm $seq.model.gz`)
+        run(`rm $seq.ckp.gz`)
+        run(`rm $seq.iqtree`)
+    catch
+    end
     next!(p)
 end
 
