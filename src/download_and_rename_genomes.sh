@@ -10,16 +10,13 @@ do
     esac
 done
 
-datasets download genome taxon $taxon --assembly-level chromosome --dehydrated --include protein,gff3 --filename $taxon.zip --assembly-source "RefSeq" --mag exclude --exclude-atypical
+datasets download genome taxon ${taxon} --assembly-level chromosome --dehydrated --include protein,gff3 --filename ${taxon}.zip --assembly-source "RefSeq" --mag exclude --exclude-atypical
 
+unzip ${taxon}.zip -d ${taxon}
 
+datasets rehydrate --directory ${taxon}/
 
-unzip $taxon.zip
-unzip $taxon.zip -d $taxon
-
-datasets rehydrate --directory $taxon/
-
-cd ncbi_dataset/data
+cd ${taxon}/ncbi_dataset/data
 for i in GCF*;
 do
     mv $i/protein.faa $i.faa
@@ -35,9 +32,9 @@ done >> cmds.txt
 #Separated out in case you want to comment the below out to check before executing manually. Good when you want specific name changes, etc.
 cat cmds.txt | sh
 
-mv *.faa ../../seqs
-mv *.gff ../../seqs
+mv *.faa ../../../seqs
+mv *.gff ../../../seqs
 
 cd ../..
 
-rm -rf ncbi_datasets/
+
