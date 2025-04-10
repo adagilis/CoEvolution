@@ -109,21 +109,27 @@ function build_orth_files(rbh_res,path;cutoff=4)
     """
     Found $(length(uniqseq)) sequences with at least one RBH.
     """
-    p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences (default = 4)")
+    p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences (default = 4). Skipping existing files.")
     @floop ThreadedEx() for i in uniqseq
         subrbh = rbh_res[rbh_res.i.==i,:]
         if length(subrbh.species2) >= cutoff
             outfile = outpath*i*".fasta"
-            #grab sequence from species fasta
-            append_seq(i,focal,infile,outfile)
-            for orth in 1:length(subrbh.i)
-                species_name = subrbh.species2[orth]
-                species_file = path*"seqs/"*species_name*".faa"
-                seq_name = subrbh.j[orth]
-                append_seq(seq_name,species_name,species_file,outfile)
-                #append sequence to outfile
-            end
             aligned_out = replace(outfile,r".fasta" => s".aligned.fasta")
+            if isfile(aligned_out)
+                """
+                Found existing $aligned_out, skipping sequence! 
+                """
+            else
+                #grab sequence from species fasta
+                append_seq(i,focal,infile,outfile)
+                for orth in 1:length(subrbh.i)
+                    species_name = subrbh.species2[orth]
+                    species_file = path*"seqs/"*species_name*".faa"
+                    seq_name = subrbh.j[orth]
+                    append_seq(seq_name,species_name,species_file,outfile)
+                    #append sequence to outfile
+                end
+            end
             run(pipeline(`mafft --auto $outfile`;stdout=aligned_out))
             run(`rm $outfile`)
         end
