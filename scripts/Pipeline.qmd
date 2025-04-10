@@ -43,8 +43,8 @@ using DrWatson
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 #Set these values for your own analysis
-data_dir = datadir("dipterans/")
-focal= "D_melanogaster"
+data_dir = datadir("Teleostei/")
+focal= "G_aculeatus"
 outgroup = "C_felis"
 
 #Now run the below, and go off to grab some tea, or take a break for the day.
