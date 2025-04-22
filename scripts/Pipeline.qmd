@@ -43,17 +43,20 @@ using DrWatson
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 #Set these values for your own analysis
-data_dir = datadir("Teleostei/")
-focal= "G_aculeatus"
+data_dir = datadir("dipterans/")
+focal= "D_melanogaster"
 outgroup = "C_felis"
+```
 
+
+```{julia}
 #Now run the below, and go off to grab some tea, or take a break for the day.
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
 #If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir\blast` directory, and run it again. It will only run analyses for missing pairs of species.
 using JLD2
 
-jldsave(data_dir*"orthologs.jld2",orths=all_orthologs)
+jldsave(data_dir*focal*"_orthologs.jld2",orths=all_orthologs)
 #And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=jldopen(data_dir*"orthologs.jld2")[orths]`
 
 #The next step takes the longest, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
@@ -94,5 +97,49 @@ end
 
 
 
+```{julia}
+finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
+species_tree = read_tree("data/dipterans/trees/astral_consensus.newick")
+
+ERC = runERC_files(finished_trees,species_tree)
+
+using JLD2
+jldsave(data_dir*focal*"_ERC_scores.jld2",ERC=ERC)
+
+sub_ERC = ERC[findall((!isnan).(ERC.pval)),:]
+
+include(srcdir("ERC_simulations.jl"))
+
+ERC_null = calculate_ERC_exp_null(species_tree,1000)
+quants = quantile(ERC_null.r,[0.025,0.975])
+
+sub_ERC = sub_ERC[union(findall(sub_ERC.r .< quants[1]),findall(sub_ERC.r .> quants[2])),:]
+sig_ERC = sub_ERC[findall(sub_ERC.pval .< 0.05/length(sub_ERC.pval)),:]
+
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
+sig_ERC.i = genes[Int.(sig_ERC.i)]
+sig_ERC.j = genes[Int.(sig_ERC.j)]
+
+CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
+```
 
 
+
+## Gene Table Annotation and comparisons
+
+```{julia}
+
+gff_table = CSV.read(data_dir*focal*"_genes.gff",DataFrame,header=false,skipto=9)
+
+gene_table = DataFrame(gene=genes,chr="NA",pos_1=0,pos_2=0)
+for g in 1:length(genes)
+    subtable = gff_table[findall(occursin.(genes[g],gff_table.Column9)),:]
+    if size(subtable)[1] > 0
+        gene_table.chr[g] = subtable.Column1[1]
+        gene_table.pos_1[g] = minimum(subtable.Column4)
+        gene_table.pos_2[g] = maximum(subtable.Column5)
+    end
+end
+
+
+```
