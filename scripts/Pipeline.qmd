@@ -130,6 +130,13 @@ CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 ```{julia}
 
 gff_table = CSV.read(data_dir*focal*"_genes.gff",DataFrame,header=false,skipto=9)
+gff_table = gff_table[completecases(gff_table),:]
+
+chr_dict = Dict("NC_004354.4"=>"X","NT_033779.5"=>"2L","NT_033778.4"=>"2R","NT_037436.4"=>"3L","NT_033777.3"=>"3R","NC_004353.4"=>"4","NC_024512.1"=>"Y","NC_024511.2"=>"MT")
+
+gff_table.Column1 = [get(chr_dict,c,"NA") for c in gff_table.Column1]
+
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
 
 gene_table = DataFrame(gene=genes,chr="NA",pos_1=0,pos_2=0)
 for g in 1:length(genes)
@@ -141,5 +148,70 @@ for g in 1:length(genes)
     end
 end
 
+#Output coordinate file, this will be converted to dmel5 coordinates for vcf analysis
 
+coords = open(data_dir*"gene_coords.txt","a")
+
+for i in 1:length(gene_table.chr)
+    write(coords,gene_table.chr[i]*":"*string(gene_table.pos_1[i])*"-"*string(gene_table.pos_2[i])*"\n")
+end
+
+close(coords)
+
+
+
+#Construct introgression table
+
+d_stats = filter(endswith("_tree.txt"),readdir(data_dir*"introgression/",join=true))
+d_table = zeros(455,length(d_stats))
+d_template = CSV.read(d_stats[1],DataFrame)
+
+for d in 1:length(d_stats)
+    tmp = CSV.read(d_stats[d],DataFrame)
+    idx = findall(tmp.P1 .!= d_template.P1)
+    abba = tmp.ABBA
+    baba = tmp.BABA
+    abba[idx] = tmp.BABA[idx]
+    baba[idx] = tmp.ABBA[idx]
+    d_table[:,d] = (abba .- baba) ./ (tmp.BBAA .+ tmp.ABBA .+ tmp.BABA)
+end
+
+cor_mat = cor_test_matrix(d_table,2)
+cor_mat = cor_mat[findall((!isnan).(cor_mat.r)),:]
+d_names = parse.(Int,replace.(filter(endswith("_tree.txt"),readdir(data_dir*"introgression/",join=false)),r"_tree.txt"=>s""))
+cor_mat.i = genes[d_names[Int.(cor_mat.i)]]
+cor_mat.j = genes[d_names[Int.(cor_mat.j)]]
+rename!(cor_mat,"r"=>"int_r")
+rename!(cor_mat,"pval"=>"int_pval")
+
+joint_tab = innerjoin(sub_ERC,cor_mat[:,3:5],on=[:gid])
+
+
+joint_tab.id1 = indexin(joint_tab.i,gene_table.gene)
+joint_tab.id2 = indexin(joint_tab.j,gene_table.gene)
+
+joint_tab.chr1 = gene_table.chr[joint_tab.id1]
+joint_tab.chr2 = gene_table.chr[joint_tab.id2]
+
+joint_tab.pos1_1 = gene_table.pos_1[joint_tab.id1]
+joint_tab.pos1_2 = gene_table.pos_2[joint_tab.id1]
+
+
+joint_tab.pos2_1 = gene_table.pos_1[joint_tab.id2]
+joint_tab.pos2_2 = gene_table.pos_2[joint_tab.id2]
+
+joint_tab.dist = [minimum([abs(a.pos1_2-a.pos2_1),abs(a.pos2_2-a.pos1_1)]) for a in eachrow(joint_tab)]
+joint_tab.dist[findall(joint_tab.chr1 .!= joint_tab.chr2)] .= -1000000
+
+using Plots
+
+p1=histogram2d(joint_tab.r,joint_tab.int_r,bins=(200,200),normalize=:pdf,color=cgrad(:vik,scale=:log10),show_empty_bins=true,xlabel="ERC correlation",ylabel="Introgression Correlation")
+
+Plots.savefig(p1,"/mnt/d/ERCvsCoInt.pdf")
+using GLM
+
+ols = lm(@formula(int_r~r),joint_tab)
+
+
+combine(groupby(joint_tab, [:r, :int_r]), [:chr1, :chr2] .=> mean; renamecols = false)
 ```

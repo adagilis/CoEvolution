@@ -3,7 +3,7 @@ using Distributions
 using FLoops
 using DataFrames
 using HypothesisTests
-
+using Loess
 
 """
     cor_test_matrix(m,dim) -> DataFrame(i,j,r,pval)
@@ -49,4 +49,17 @@ end
 """
 function zscores(x)
     return((x .- mean(x))./ std(x))
+end
+
+
+"""
+    loess!(plot,x,y)
+    adds a loess curve to a plot
+"""
+
+function loess!(p,x,y)
+    model = loess(x,y)
+    us = range(extrema(x)...;step=(extrema(x)[2]-extrema(x)[1])/100)
+    vs = predict(model,us)
+    plot!(p,us,vs,legend=false)
 end
