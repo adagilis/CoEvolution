@@ -68,3 +68,26 @@ function loess!(p,x,y)
     vs = predict(model,us)
     plot!(p,us,vs,legend=false)
 end
+
+"""
+    nonanmissing(x)
+    quick convenience function, similaar to skipmissing, but also skips nans
+"""
+
+function nonanmissing(x)
+    idnan = findall((!isnan).(x))
+    idmiss = findall((!ismissing).(x[idnan]))
+    return(x[idnan[idmiss]])
+end
+
+"""
+    nonanmissing(x,y)
+    quick convenience function, similar to skipmissinggs
+"""
+
+function nonanmissing(x,y)
+    idnan = intersect(findall((!isnan).(x)),findall((!isnan).(y)))
+    idmiss = intersect(findall((!ismissing).(x[idnan])),findall((!ismissing).(y[idnan])))
+    return([x[idnan[idmiss]],y[idnan[idmiss]]])
+end
+

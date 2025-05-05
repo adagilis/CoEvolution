@@ -27,9 +27,14 @@ Pkg.instantiate()
 
 This might run for a while, as it will compile any necessary packages for later scripts. While that is running, install the following on your system.
 
-2) [Muscle v5+](https://github.com/rcedgar/muscle/releases)
+2) [Mafft](https://github.com/rcedgar/muscle/releases)
 3) [Diamond](https://github.com/bbuchfink/diamond/wiki)
 4) [iqTree2](http://www.iqtree.org/#download)
+
+If you also wish to run co-introgression analysis, you'll need:
+
+5) [Dsuite]()
+6) [bcftools]()
 
 Hopefully Julia is up and running at this point, so we can begin on the main steps of the analysis
 
@@ -40,7 +45,6 @@ We first identify orthologous sequences for all genes within the focal species. 
 ```{julia}
 using DrWatson
 @quickactivate "CoEvolution"
-using Missings
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 #Set these values for your own analysis
@@ -96,7 +100,9 @@ end
 
 ```
 
+## Calculating ERC
 
+Now that all of the trees should be built, we can calculate ERC. 
 
 ```{julia}
 finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
@@ -104,10 +110,11 @@ species_tree = read_tree("data/dipterans/trees/astral_consensus.newick")
 
 ERC = runERC_files(finished_trees,species_tree)
 
-using JLD2
-jldsave(data_dir*focal*"_ERC_scores.jld2",ERC=ERC)
+ERC = ERC[findall(completecases(ERC)),:]
 
-sub_ERC = ERC[findall((!isnan).(ERC.pval)),:]
+using Arrow
+Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
 include(srcdir("ERC_simulations.jl"))
 
@@ -161,7 +168,7 @@ close(coords)
 
 #Calculate introgression statistics
 
-source(src_dir("Introgression_functions.jl"))
+include(srcdir("Introgression_functions.jl"))
 using FLoops
 using ProgressMeter
 
@@ -209,9 +216,8 @@ ERC.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(ERC)]
 
 rename!(cor_mat,"r"=>"int_r")
 rename!(cor_mat,"pval"=>"int_pval")
-
+#This dataframe is _huge_, and running into issues with memory at 12k genes. Need to recode for a more efficient approach. Consider BigQuery, or Arrow
 joint_tab = innerjoin(ERC,cor_mat[:,3:5],on=[:gid])
-
 
 joint_tab.id1 = indexin(joint_tab.i,gene_table.gene)
 joint_tab.id2 = indexin(joint_tab.j,gene_table.gene)
@@ -226,8 +232,11 @@ joint_tab.pos1_2 = gene_table.pos_2[joint_tab.id1]
 joint_tab.pos2_1 = gene_table.pos_1[joint_tab.id2]
 joint_tab.pos2_2 = gene_table.pos_2[joint_tab.id2]
 
-joint_tab.dist = [minimum([abs(a.pos1_2-a.pos2_1),abs(a.pos2_2-a.pos1_1)]) for a in eachrow(joint_tab)]
-joint_tab.dist[findall(joint_tab.chr1 .!= joint_tab.chr2)] .= -1000000
+joint_tab.dist = missings(Int64,length(joint_tab.i))
+
+same_chr = findall(joint_tab.chr1 .== joint_tab.chr2)
+joint_tab.dist[same_chr] = [minimum([abs(a.pos1_2-a.pos2_1),abs(a.pos2_2-a.pos1_1)]) for a in eachrow(joint_tab[same_chr,:])]
+
 
 using Plots
 

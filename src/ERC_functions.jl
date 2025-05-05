@@ -42,13 +42,13 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
             pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
         else 
             #Too few edges with values below cutoff
-            r = 0.0
-            pval = 1.0
+            r = missing
+            pval = missing
         end
     else
         #No tip overlap
-        r = 0.0
-        pval = 1.0
+        r = missing
+        pval = missing
         kept_edges = []
     end
     return(Dict(:i => id1,:j => id2,:n_edges=>length(kept_edges),:r => r,:pval => pval))
@@ -64,7 +64,7 @@ Calculate a set of ERC values given a list of gene trees `trees` and a species t
 function runERC_files(trees,species_tree;cutoff=5)
     num_comp = binomial(length(trees),2)
     p = Progress(num_comp,desc="Calculating ERC scores:")
-    local ERC_res=DataFrame(zeros(num_comp,5),[:i,:j,:n_edges,:r,:pval])
+    local ERC_res=DataFrame(missings(Float64,num_comp,5),[:i,:j,:n_edges,:r,:pval])
     @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
         if(j>i)
             ti = read_tree(trees[i])
@@ -75,7 +75,7 @@ function runERC_files(trees,species_tree;cutoff=5)
             catch
                 #println("ERC failed to calculate for $(i), $(j)")
                 #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
-                ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>0,:r => -1,:pval =>-1)
+                ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:pval =>missing)
             end
             next!(p)
         end
