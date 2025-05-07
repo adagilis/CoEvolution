@@ -1,0 +1,1 @@
+esearch -db assembly -query $1 | efetch -format docsum | xtract -pattern DocumentSummary -element Organism

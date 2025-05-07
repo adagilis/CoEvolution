@@ -2,6 +2,34 @@ using CSV, DataFrames
 using ProgressMeter
 using FLoops
 
+
+"""
+    download_and_prep_sequences(taxon) -> sequence files in /seqs/ folder
+"""
+
+function download_and_prep_sequences(taxon;level="chromosome")
+    isdir(data_dir*"seqs/") || mkdir(data_dir*"seqs/")
+    run(`datasets download genome taxon $taxon --assembly-level $level --dehydrated --include protein,gff3 --filename $data_dir/$taxon.zip --assembly-source "RefSeq" --mag exclude --exclude-atypical`)
+    run(`unzip $data_dir/$taxon.zip -d $data_dir/seqs/`)
+    run(`datasets rehydrate --directory $data_dir/seqs/`)
+    files = filter(contains("GCF"),readdir(data_dir*"seqs/ncbi_dataset/data/",join=true))
+    GCFs = filter(contains("GCF"),readdir(data_dir*"seqs/ncbi_dataset/data/",join=false))
+    for g in 1:length(GCFs)
+        gcf = GCFs[g]
+        faa = files[g]*"/protein.faa"
+        gff = files[g]*"/genomic.gff"
+        name = split(read(`bash src/get_name.sh $gcf`,String)," ")
+        out_faa = data_dir*"seqs/"*name[1][1]*"_"*replace(name[2],r"\n"=>"")*".faa"
+        out_gff = data_dir*"seqs/"*name[1][1]*"_"*replace(name[2],r"\n"=>"")*".gff"
+        run(`mv $faa $out_faa`)
+        run(`mv $gff $out_gff`)
+    end
+    run(`rm -rf $data_dir/seqs/ncbi_dataset`)
+end
+
+
+
+
 #general functions to generate diamond calls and identify reciprocal best hits from outputs
 
 """

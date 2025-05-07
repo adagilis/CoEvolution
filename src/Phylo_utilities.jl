@@ -89,3 +89,38 @@ function getdescendant_leaves(tree,n)
         return(n.name)
     end
 end
+
+"""
+    run_astral(trees) -> ASTRAL4 consensus tree
+"""
+function run_astral(trees)
+    treefile=data_dir*"trees/concat_trees.tre"
+    for t in trees
+        run(pipeline(`cat $t`),stdout=treefile,append=true)
+    end
+    run(`astral4 -i $treefile -o $data_dir/trees/astral_consensus.newick -u 0 --root $outgroup`)
+    run(`rm $treefile`)
+end
+
+"""
+    run_iqtree(seq) -> iqtree gene tree
+"""
+
+function run_iqtree(seq)
+    cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
+    run(pipeline(cmd;stderr=devnull))
+    treefile_old = seq*".treefile"
+    treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
+    cmd2 = `mv $treefile_old $treefile_new`
+    run(cmd2)
+    #and clean up
+    try
+        run(`rm $seq.mldist`)
+        run(`rm $seq.model.gz`)
+        run(`rm $seq.ckp.gz`)
+        run(`rm $seq.iqtree`)
+        run(`rm $seq.bionj`)
+        run(`rm $seq.log`)
+    catch
+    end
+end

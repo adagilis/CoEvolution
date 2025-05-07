@@ -5,19 +5,14 @@ format: html
 
 # Introduction
 
-This file shows how to utilize the pipeline built here to generate an ERC network for some species of interest. In this case, we will be focusing on *D. melanogaster* and utilizing all annotated Dipteran genomes available on ncbi, alongside *C. felis* as an outgroup. We assume that you are using some form of Unix, but the pipeline has been tested on Ubuntu running in WSL2. It _should_ work in both Windows and on MacOS, assuming all necessary software is installed and visible to your CLI. 
-
-### Getting data
-
- We first download the data, which can be made easier using the `download_and_rename_genomes.sh` script available in `scr`. Note, this script requires ncbi's `datasets-cli` command line utility. Find it [here](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/), for now, before inevitable NCBI budget cuts remove access to the data. It will also require the ncbi esearch tools, installation information found [here](https://www.ncbi.nlm.nih.gov/books/NBK179288/)
-
+This file shows how to utilize the pipeline built here to generate an ERC network for some species of interest. In this case, we will be focusing on *D. melanogaster* and utilizing all annotated Dipteran genomes available on ncbi, alongside *C. felis* as an outgroup. We assume that you are using some form of Unix, but the pipeline has been tested on Ubuntu running in WSL2. It *should* work in both Windows and on MacOS, assuming all necessary software is installed and visible to your CLI.
 
 # Initializing the software, installing all dependencies.
 
-Before we run any analyses, we will require several tools.
-1) Julia v 1.11+
+Before we run any analyses, we will require several tools. 1) Julia v 1.11+
 
 Once Julia is installed, run the below script:
+
 ```{julia}
 using Pkg
 Pkg.add("DrWatson")
@@ -27,86 +22,103 @@ Pkg.instantiate()
 
 This might run for a while, as it will compile any necessary packages for later scripts. While that is running, install the following on your system.
 
-2) [Mafft](https://github.com/rcedgar/muscle/releases)
-3) [Diamond](https://github.com/bbuchfink/diamond/wiki)
-4) [iqTree2](http://www.iqtree.org/#download)
+2)  [Mafft](https://github.com/rcedgar/muscle/releases)
+3)  [Diamond](https://github.com/bbuchfink/diamond/wiki)
+4)  [iqTree2](http://www.iqtree.org/#download)
+
+If you would like to use this pipeline to download and prep data, make sure you have installed:
+
+5)  [datasets-cli](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/)
+6)  [ncbi e-utils](https://www.ncbi.nlm.nih.gov/books/NBK179288/)
 
 If you also wish to run co-introgression analysis, you'll need:
 
-5) [Dsuite]()
-6) [bcftools]()
+7)  [Dsuite](https://github.com/millanek/Dsuite)
+8)  [bcftools](https://www.htslib.org/download/)
 
-Hopefully Julia is up and running at this point, so we can begin on the main steps of the analysis
+Hopefully Julia is up and running at this point, so we can begin on the main steps of the analysis.
+
+# Defining major parameters
+
+The below codeblock
+
+```{julia}
+using DrWatson
+@quickactivate "CoEvolution"
+
+#Set these values for your own analysis. Taxon can be given as plain-text, but use ncbi taxon ids when possible.
+taxon = "Diptera"
+data_dir = datadir(taxon) #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
+#Specify the focal species for the analysis.
+focal= "D_melanogaster"
+#Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
+outgroup_ncbi_id = "Ctenocephalides felis"
+outgroup_name = "C_felis"
+```
+
+# Prep data
+
+You can prepare the data in one of two ways. First, you can define the taxon of interest in the code block below and download data using our internal script. This will poll the NCBI `datasets` database to find any annotated, chromosome level assemblies within the taxon specified, download their protein sequences and gff files and place them in the data directory in the `seqs` folder.
+
+```{julia}
+#SKIP THIS IF YOU ARE USING YOUR OWN DATA!
+include srcdir("Finding_orthologs.jl")
+isdir(data_dir) || mkdir(data_dir)
+download_and_prep_sequences(taxon)
+download_and_prep_sequences(outgroup_ncbi_id;level=scaffold)
+```
 
 # Finding orthologs for focal species.
 
 We first identify orthologous sequences for all genes within the focal species. This is done in the following code block, most functions are defined in the `src\Finding_orthologs.jl` script. Fill out parameters in the blanks below to point to the correct files.
 
 ```{julia}
-using DrWatson
-@quickactivate "CoEvolution"
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
-#Set these values for your own analysis
-data_dir = datadir("dipterans/")
-focal= "D_melanogaster"
-outgroup = "C_felis"
 ```
-
 
 ```{julia}
 #Now run the below, and go off to grab some tea, or take a break for the day.
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
 #If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir\blast` directory, and run it again. It will only run analyses for missing pairs of species.
-using JLD2
+using Arrow
 
-jldsave(data_dir*focal*"_orthologs.jld2",orths=all_orthologs)
-#And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=jldopen(data_dir*"orthologs.jld2")[orths]`
+Arrow.write(data_dir*focal*"_orthologs.arrow",all_orthologs)
 
-#The next step takes the longest, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
+#And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=DataFrame(Arrow.Table(data_dir*focal*"_orthologs.arrow))"`
+
+#The next step takes a while, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
 
 build_orth_files(all_orthologs,data_dir)
 
-#Finally, we generate a tree for each gene. Earlier versions we constrained the tree topology, which was faster, but does not allow us to do certain secondary analyses that we will want to. 
+#Finally, we generate a tree for each gene. Earlier versions we constrained the tree topology, which was faster, but does not allow us to do certain secondary analyses that we will want to, and is probably the wrong way to approach this.
+
 using FLoops
 using ProgressMeter
 
 isdir(data_dir*"trees/") || mkdir(data_dir*"trees/")
 
 aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/"))
-finished_trees = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/")),r".treefile"=>s"")
-
-todo = data_dir*"aligned/".*setdiff(aligned_genes, finished_trees)
 
 p=Progress(length(todo),desc="Running IQTree2")
 @floop ThreadedEx() for seq in todo
-    cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
-    run(pipeline(cmd;stderr=devnull))
-    treefile_old = seq*".treefile"
-    treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
-    cmd2 = `mv $treefile_old $treefile_new`
-    run(cmd2)
-    try
-        run(`rm $seq.mldist`)
-        run(`rm $seq.model.gz`)
-        run(`rm $seq.ckp.gz`)
-        run(`rm $seq.iqtree`)
-    catch
-    end
+    run_iqtree(seq)    
     next!(p)
 end
 
+finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
+run_astral(finished_trees)
 
 ```
 
 ## Calculating ERC
 
-Now that all of the trees should be built, we can calculate ERC. 
+Now that all of the trees should be built, we can calculate ERC.
 
 ```{julia}
-finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
-species_tree = read_tree("data/dipterans/trees/astral_consensus.newick")
+#Change if using some other species tree.
+species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 
 ERC = runERC_files(finished_trees,species_tree)
 
@@ -130,8 +142,6 @@ sig_ERC.j = genes[Int.(sig_ERC.j)]
 
 CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 ```
-
-
 
 ## Gene Table Annotation and comparisons
 
