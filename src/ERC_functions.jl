@@ -30,16 +30,16 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
         rename!(branches_1,:bl => :bl_1)
         branches_2 = breakdown_tree(gene2)
         rename!(branches_2,:bl => :bl_2)
-        all_branches = leftjoin(leftjoin(scale_rates,branches_1,on=:node),branches_2,on=:node)
+        all_branches = innerjoin(innerjoin(scale_rates,branches_1,on=:node),branches_2,on=:node)
         dropmissing!(all_branches)
         rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"]
         rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>3)
-            z_1 = zscores(rates_1)
-            z_2 = zscores(rates_2)
-            r = cor(z_1[kept_edges],z_2[kept_edges])
-            pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
+            z_1 = zscores(rates_1[kept_edges])
+            z_2 = zscores(rates_2[kept_edges])
+            r = cor(z_1,z_2)
+            pval = pvalue(CorrelationTest(z_1,z_2))
         else 
             #Too few edges with values below cutoff
             r = missing

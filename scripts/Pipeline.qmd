@@ -47,8 +47,8 @@ using DrWatson
 @quickactivate "CoEvolution"
 
 #Set these values for your own analysis. Taxon can be given as plain-text, but use ncbi taxon ids when possible.
-taxon = "Diptera"
-data_dir = datadir(taxon) #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
+taxon = "Dipterans"
+data_dir = datadir("dipterans/") #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
 #Specify the focal species for the analysis.
 focal= "D_melanogaster"
 #Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
@@ -82,8 +82,8 @@ include(srcdir("ERC_functions.jl"))
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
 #If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir\blast` directory, and run it again. It will only run analyses for missing pairs of species.
-using Arrow
 
+using Arrow
 Arrow.write(data_dir*focal*"_orthologs.arrow",all_orthologs)
 
 #And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=DataFrame(Arrow.Table(data_dir*focal*"_orthologs.arrow))"`
@@ -129,6 +129,9 @@ Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
 include(srcdir("ERC_simulations.jl"))
+
+test_trees = simulate_tree_set(species_tree,4,1000,23,72)
+ERC_simulation = runERC_collection(test_trees,species_tree;cutoff=10000)
 
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
 quants = quantile(ERC_null.r,[0.025,0.975])
@@ -229,18 +232,18 @@ rename!(cor_mat,"pval"=>"int_pval")
 #This dataframe is _huge_, and running into issues with memory at 12k genes. Need to recode for a more efficient approach. Consider BigQuery, or Arrow
 joint_tab = innerjoin(ERC,cor_mat[:,3:5],on=[:gid])
 
-joint_tab.id1 = indexin(joint_tab.i,gene_table.gene)
-joint_tab.id2 = indexin(joint_tab.j,gene_table.gene)
+id1 = indexin(joint_tab.i,gene_table.gene)
+id2 = indexin(joint_tab.j,gene_table.gene)
 
-joint_tab.chr1 = gene_table.chr[joint_tab.id1]
-joint_tab.chr2 = gene_table.chr[joint_tab.id2]
+joint_tab.chr1 = gene_table.chr[id1]
+joint_tab.chr2 = gene_table.chr[id2]
 
-joint_tab.pos1_1 = gene_table.pos_1[joint_tab.id1]
-joint_tab.pos1_2 = gene_table.pos_2[joint_tab.id1]
+joint_tab.pos1_1 = gene_table.pos_1[id1]
+joint_tab.pos1_2 = gene_table.pos_2[id1]
 
 
-joint_tab.pos2_1 = gene_table.pos_1[joint_tab.id2]
-joint_tab.pos2_2 = gene_table.pos_2[joint_tab.id2]
+joint_tab.pos2_1 = gene_table.pos_1[id2]
+joint_tab.pos2_2 = gene_table.pos_2[id2]
 
 joint_tab.dist = missings(Int64,length(joint_tab.i))
 
@@ -258,5 +261,18 @@ using GLM
 ols = lm(@formula(int_r~r),joint_tab)
 
 
-combine(groupby(joint_tab, [:r, :int_r]), [:chr1, :chr2] .=> mean; renamecols = false)
+combine(groupby(joint_tab, [:r, :int_r]), [:chr_combo] .=> mean; renamecols = false)
+
+
+string_db = CSV.read("data/dipterans/String_dmel.detailed.v12.0.txt",DataFrame)
+string_alias = CSV.read("data/dipterans/String_dmel_protein_info.txt",DataFrame)
+idx = indexin(gene_table.gene,string_alias.alias)
+idx = replace(idx,nothing => missing)
+gene_table.string_id = missings(String31,length(gene_table.gene))
+gene_table.string_id[findall((!ismissing).(idx))] = string_alias.var"#string_protein_id"[idx[findall((!ismissing).(idx))]]
+
+string_db.id1 = indexin(string_db.protein1,gene_table.string_id)
+string_db.id2 = indexin(string_db.protein2,gene_table.string_id)
+string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
+
 ```
