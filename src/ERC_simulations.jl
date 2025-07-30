@@ -24,9 +24,8 @@ function simulate_subsampled_tree(species_tree,n,scale)
     keeptips!(copy_tree,rand_tips)
     rescale_tree!(copy_tree,scale)
     net = phylo_to_net(copy_tree)
-    sim = simulatecoalescent(net,1,1)[1]
+    sim = simulatecoalescent(net,1,1;nodemapping=true)[1]
     tree = net_to_phylo(removedegree2nodes!(sim))
-    rescale_tree!(tree,1/scale)
     return(tree)
 end
 

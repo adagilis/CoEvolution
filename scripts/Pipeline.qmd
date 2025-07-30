@@ -130,18 +130,25 @@ ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
 include(srcdir("ERC_simulations.jl"))
 
-test_trees = simulate_tree_set(species_tree,4,1000,23,72)
-ERC_simulation = runERC_collection(test_trees,species_tree;cutoff=10000)
+θ = 100
+test_trees = simulate_tree_set(species_tree,θ,1000,40,73)
+ERC_simulation = runERC_collection(test_trees,rescale_tree(species_tree,θ))
+theta_comp = DataFrame(theta = 1,r = ERC_simulation.r,n_edges=ERC_simulation.n_edges)
+for θ in 10.0 .^ collect([-2:1:8;])
+    test_trees = simulate_tree_set(species_tree,θ,100,40,73)
+    ERC_simulation = runERC_collection(test_trees,rescale_tree(species_tree,θ))
+    theta_comp=vcat(theta_comp,DataFrame(theta=θ,r=ERC_simulation.r,n_edges=ERC_simulation.n_edges))
+end
 
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
 quants = quantile(ERC_null.r,[0.025,0.975])
 
-sub_ERC = sub_ERC[union(findall(sub_ERC.r .< quants[1]),findall(sub_ERC.r .> quants[2])),:]
+sub_ERC = ERC[findall(ERC.r .> quants_sim[1]),:]
 sig_ERC = sub_ERC[findall(sub_ERC.pval .< 0.05/length(sub_ERC.pval)),:]
 
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
-sig_ERC.i = genes[Int.(sig_ERC.i)]
-sig_ERC.j = genes[Int.(sig_ERC.j)]
+ERC.i = genes[Int.(ERC.i)]
+ERC.j = genes[Int.(ERC.j)]
 
 CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 ```
@@ -231,12 +238,15 @@ rename!(cor_mat,"r"=>"int_r")
 rename!(cor_mat,"pval"=>"int_pval")
 #This dataframe is _huge_, and running into issues with memory at 12k genes. Need to recode for a more efficient approach. Consider BigQuery, or Arrow
 joint_tab = innerjoin(ERC,cor_mat[:,3:5],on=[:gid])
+idx = findall(joint_tab.)
+
 
 id1 = indexin(joint_tab.i,gene_table.gene)
 id2 = indexin(joint_tab.j,gene_table.gene)
 
 joint_tab.chr1 = gene_table.chr[id1]
 joint_tab.chr2 = gene_table.chr[id2]
+joint_tab.chr_combo = [join(sort([x.chr1,x.chr2]),"-") for x in eachrow(joint_tab)]
 
 joint_tab.pos1_1 = gene_table.pos_1[id1]
 joint_tab.pos1_2 = gene_table.pos_2[id1]
@@ -261,7 +271,7 @@ using GLM
 ols = lm(@formula(int_r~r),joint_tab)
 
 
-combine(groupby(joint_tab, [:r, :int_r]), [:chr_combo] .=> mean; renamecols = false)
+chr_table = combine(groupby(joint_tab, [:chr_combo]), [:r,:combined_score] .=> mean; renamecols = false)
 
 
 string_db = CSV.read("data/dipterans/String_dmel.detailed.v12.0.txt",DataFrame)
@@ -271,8 +281,12 @@ idx = replace(idx,nothing => missing)
 gene_table.string_id = missings(String31,length(gene_table.gene))
 gene_table.string_id[findall((!ismissing).(idx))] = string_alias.var"#string_protein_id"[idx[findall((!ismissing).(idx))]]
 
+
 string_db.id1 = indexin(string_db.protein1,gene_table.string_id)
 string_db.id2 = indexin(string_db.protein2,gene_table.string_id)
+idx = intersect(findall((!isnothing).(string_db.id1)),findall((!isnothing).(string_db.id2)))
+string_db = string_db[idx,:]
 string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
 
+joint_tab = innerjoin(ERC,string_db,on=:gid)
 ```

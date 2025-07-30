@@ -25,6 +25,21 @@ function net_to_phylo(net)
     return(Phylo.parsenewick(PhyloNetworks.writenewick(net)))
 end
 
+"""
+    rescale_tree(tree:Phylo,scale) -> Phylo
+All branch lengths in `tree` are rescaled by multiplying by scale.
+"""
+
+function rescale_tree(tree,scale)
+    tree_c = deepcopy(tree)
+    for e in getbranches(tree_c)
+        e.length = e.length * scale
+    end
+    return(tree_c)
+end
+
+
+
 
 """
     rescale_tree(tree:Phylo,scale) -> Phylo
