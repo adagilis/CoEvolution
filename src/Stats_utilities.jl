@@ -82,7 +82,7 @@ end
 
 """
     nonanmissing(x,y)
-    quick convenience function, similar to skipmissinggs
+    quick convenience function, similar to skipmissings, but here checking for missings in either of two vectors. 
 """
 
 function nonanmissing(x,y)
@@ -91,3 +91,15 @@ function nonanmissing(x,y)
     return([x[idnan[idmiss]],y[idnan[idmiss]]])
 end
 
+"""
+    range_dist(x,y)
+    Returns the distance between two ranges, returning 0 if they overlap.
+"""
+
+function range_dist(x,y)
+    if sort(x)[1] < sort(y)[1]
+        return(maximum([0,sort(y)[1]-sort(x)[2]]))
+    else
+        return(maximum([0,sort(x)[1]-sort(y)[2]]))
+    end
+end

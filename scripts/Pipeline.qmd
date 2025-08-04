@@ -40,7 +40,7 @@ Hopefully Julia is up and running at this point, so we can begin on the main ste
 
 # Defining major parameters
 
-The below codeblock
+The below codeblock is where you can define the major parameters for the pipeline (taxon, focal species, outgroup, directory). The nature of this pipeline means it might be a good idea to just have these in the `Project.toml` file, but I know people will be more afraid of editing a file they can't see versus running code-blocks in a somewhat familiar interface.
 
 ```{julia}
 using DrWatson
@@ -82,8 +82,8 @@ include(srcdir("ERC_functions.jl"))
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
 #If the above gets interrupted - delete any .tsv files of size 0 in your `data_dir\blast` directory, and run it again. It will only run analyses for missing pairs of species.
-
 using Arrow
+
 Arrow.write(data_dir*focal*"_orthologs.arrow",all_orthologs)
 
 #And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=DataFrame(Arrow.Table(data_dir*focal*"_orthologs.arrow))"`
@@ -101,8 +101,8 @@ isdir(data_dir*"trees/") || mkdir(data_dir*"trees/")
 
 aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/"))
 
-p=Progress(length(todo),desc="Running IQTree2")
-@floop ThreadedEx() for seq in todo
+p=Progress(length(aligned_genes),desc="Running IQTree2")
+@floop ThreadedEx() for seq in aligned_genes
     run_iqtree(seq)    
     next!(p)
 end
@@ -121,42 +121,38 @@ Now that all of the trees should be built, we can calculate ERC.
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 
 ERC = runERC_files(finished_trees,species_tree)
-
+#Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
-
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
+ERC.i = genes[Int.(ERC.i)]
+ERC.j = genes[Int.(ERC.j)]
+ERC.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(ERC)]
 using Arrow
 Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
 include(srcdir("ERC_simulations.jl"))
 
-θ = 100
-test_trees = simulate_tree_set(species_tree,θ,1000,40,73)
-ERC_simulation = runERC_collection(test_trees,rescale_tree(species_tree,θ))
-theta_comp = DataFrame(theta = 1,r = ERC_simulation.r,n_edges=ERC_simulation.n_edges)
-for θ in 10.0 .^ collect([-2:1:8;])
-    test_trees = simulate_tree_set(species_tree,θ,100,40,73)
-    ERC_simulation = runERC_collection(test_trees,rescale_tree(species_tree,θ))
-    theta_comp=vcat(theta_comp,DataFrame(theta=θ,r=ERC_simulation.r,n_edges=ERC_simulation.n_edges))
-end
-
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
 quants = quantile(ERC_null.r,[0.025,0.975])
 
-sub_ERC = ERC[findall(ERC.r .> quants_sim[1]),:]
+sub_ERC = sub_ERC[union(findall(sub_ERC.r .< quants[1]),findall(sub_ERC.r .> quants[2])),:]
 sig_ERC = sub_ERC[findall(sub_ERC.pval .< 0.05/length(sub_ERC.pval)),:]
 
-genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
-ERC.i = genes[Int.(ERC.i)]
-ERC.j = genes[Int.(ERC.j)]
+
+
 
 CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 ```
 
 ## Gene Table Annotation and comparisons
 
-```{julia}
+We next build a table that includes all of the gene information. This is based off of the .gff file for your reference of interest.
 
+The chr_dict is just a quick conversion from NCBIs chr ids to something human readable - you'll have to make your own for your system. If you have hundreds of chromosomes/scaffolds, this can be skipped.
+
+```{julia}
+using CSV
 gff_table = CSV.read(data_dir*focal*"_genes.gff",DataFrame,header=false,skipto=9)
 gff_table = gff_table[completecases(gff_table),:]
 
@@ -176,6 +172,7 @@ for g in 1:length(genes)
     end
 end
 
+CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 #Output coordinate file, this will be converted to dmel5 coordinates for vcf analysis
 
 coords = open(data_dir*"gene_coords.txt","a")
@@ -185,6 +182,14 @@ for i in 1:length(gene_table.chr)
 end
 
 close(coords)
+
+```
+
+## Introgression stats
+
+One comparison we make is to examine how introgression correlations compare to co-evolution.
+
+```{julia}
 
 #Calculate introgression statistics
 
@@ -232,61 +237,66 @@ d_names = replace.(filter(endswith("_tree.txt"),readdir(data_dir*"introgression/
 cor_mat.i = d_names[Int.(cor_mat.i)]
 cor_mat.j = d_names[Int.(cor_mat.j)]
 cor_mat.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(cor_mat)]
-ERC.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(ERC)]
-
 rename!(cor_mat,"r"=>"int_r")
 rename!(cor_mat,"pval"=>"int_pval")
-#This dataframe is _huge_, and running into issues with memory at 12k genes. Need to recode for a more efficient approach. Consider BigQuery, or Arrow
-joint_tab = innerjoin(ERC,cor_mat[:,3:5],on=[:gid])
-idx = findall(joint_tab.)
+using Arrow
+Arrow.write(data_dir*focal*"_coInt.Arrow")
+```
 
+## ERC network analysis
 
-id1 = indexin(joint_tab.i,gene_table.gene)
-id2 = indexin(joint_tab.j,gene_table.gene)
+### Broad analysis of scores
 
-joint_tab.chr1 = gene_table.chr[id1]
-joint_tab.chr2 = gene_table.chr[id2]
-joint_tab.chr_combo = [join(sort([x.chr1,x.chr2]),"-") for x in eachrow(joint_tab)]
+We start by looking at the broad set of ERC scores. How do they compare to some potential theoretical nulls, and do they map to any interesting gene features?
 
-joint_tab.pos1_1 = gene_table.pos_1[id1]
-joint_tab.pos1_2 = gene_table.pos_2[id1]
+```{julia}
+gene_table = CSV.read(data_dir*focal*"_gene_table.csv",DataFrame)
+using Arrow
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
+id_i = indexin(ERC.i,gene_table.gene)
+id_j = indexin(ERC.j,gene_table.gene)
 
-joint_tab.pos2_1 = gene_table.pos_1[id2]
-joint_tab.pos2_2 = gene_table.pos_2[id2]
+ERC.chr_i = gene_table.chr[id_i]
+ERC.chr_j = gene_table.chr[id_j]
 
-joint_tab.dist = missings(Int64,length(joint_tab.i))
+ERC.pos_i_1 = gene_table.pos_1[id_i]
+ERC.pos_i_2 = gene_table.pos_2[id_i]
 
-same_chr = findall(joint_tab.chr1 .== joint_tab.chr2)
-joint_tab.dist[same_chr] = [minimum([abs(a.pos1_2-a.pos2_1),abs(a.pos2_2-a.pos1_1)]) for a in eachrow(joint_tab[same_chr,:])]
+ERC.pos_j_1 = gene_table.pos_1[id_j]
+ERC.pos_j_2 = gene_table.pos_2[id_j]
 
+ERC.dist = missings(Int64,length(ERC.i))
+intra = findall(ERC.chr_i .== ERC.chr_j)
+ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x in eachrow(ERC[intra,:])]
 
-using Plots
+```
 
-p1=histogram2d(joint_tab.r,joint_tab.int_r,bins=(200,200),normalize=:pdf,color=cgrad(:vik,scale=:log10),show_empty_bins=true,xlabel="ERC correlation",ylabel="Introgression Correlation")
+### Generating a "significant" set of edges
 
-Plots.savefig(p1,"/mnt/d/ERCvsCoInt.pdf")
-using GLM
+### Analysis of significant edges
 
-ols = lm(@formula(int_r~r),joint_tab)
+## STRING database
 
+The STRING database contains links between genes based on a variety of metrics. Here, we compare the co-evolution scores versus the STRING score, to see at what cut-off we are reaching all likely interactions.
 
-chr_table = combine(groupby(joint_tab, [:chr_combo]), [:r,:combined_score] .=> mean; renamecols = false)
-
+```{julia}
 
 string_db = CSV.read("data/dipterans/String_dmel.detailed.v12.0.txt",DataFrame)
 string_alias = CSV.read("data/dipterans/String_dmel_protein_info.txt",DataFrame)
+
+
 idx = indexin(gene_table.gene,string_alias.alias)
 idx = replace(idx,nothing => missing)
 gene_table.string_id = missings(String31,length(gene_table.gene))
 gene_table.string_id[findall((!ismissing).(idx))] = string_alias.var"#string_protein_id"[idx[findall((!ismissing).(idx))]]
-
 
 string_db.id1 = indexin(string_db.protein1,gene_table.string_id)
 string_db.id2 = indexin(string_db.protein2,gene_table.string_id)
 idx = intersect(findall((!isnothing).(string_db.id1)),findall((!isnothing).(string_db.id2)))
 string_db = string_db[idx,:]
 string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
+
 
 joint_tab = innerjoin(ERC,string_db,on=:gid)
 ```
