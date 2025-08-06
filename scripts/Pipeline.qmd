@@ -45,6 +45,7 @@ The below codeblock is where you can define the major parameters for the pipelin
 ```{julia}
 using DrWatson
 @quickactivate "CoEvolution"
+using Arrow, CSV
 
 #Set these values for your own analysis. Taxon can be given as plain-text, but use ncbi taxon ids when possible.
 taxon = "Dipterans"
@@ -120,7 +121,7 @@ Now that all of the trees should be built, we can calculate ERC.
 #Change if using some other species tree.
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 
-ERC = runERC_files(finished_trees,species_tree)
+ERC = runERC_files(finished_trees,species_tree;ckp_file=data_dir*focal*"ckp.jld2")
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
@@ -131,18 +132,6 @@ using Arrow
 Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
-include(srcdir("ERC_simulations.jl"))
-
-ERC_null = calculate_ERC_exp_null(species_tree,1000)
-quants = quantile(ERC_null.r,[0.025,0.975])
-
-sub_ERC = sub_ERC[union(findall(sub_ERC.r .< quants[1]),findall(sub_ERC.r .> quants[2])),:]
-sig_ERC = sub_ERC[findall(sub_ERC.pval .< 0.05/length(sub_ERC.pval)),:]
-
-
-
-
-CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 ```
 
 ## Gene Table Annotation and comparisons
@@ -272,7 +261,33 @@ ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x
 
 ```
 
+We can next visualize some basics of ERC patterns.
+
+```{julia}
+using Plots, StatsPlots
+using Measures
+
+p1 = histogram(ERC.r,xlabel="ERC",ylabel="Count",margins=5mm)
+p2 = boxplot(ERC.chr_i,ERC.r)
+```
+
 ### Generating a "significant" set of edges
+
+```{julia}
+
+include(srcdir("ERC_simulations.jl"))
+
+ERC_null = calculate_ERC_exp_null(species_tree,1000)
+quants = quantile(ERC_null.r,[0.025,0.975])
+
+sub_ERC = sub_ERC[union(findall(sub_ERC.r .< quants[1]),findall(sub_ERC.r .> quants[2])),:]
+sig_ERC = sub_ERC[findall(sub_ERC.pval .< 0.05/length(sub_ERC.pval)),:]
+
+
+
+
+CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
+```
 
 ### Analysis of significant edges
 

@@ -5,6 +5,7 @@ using Statistics
 using HypothesisTests
 using CSV
 using ProgressMeter
+using Arrow
 
 include("Phylo_utilities.jl")
 include("Stats_utilities.jl") 
@@ -15,7 +16,7 @@ ERC is defined as the correlation of Z-scores in evolutionary rates for both tre
 
 """
 
-function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
+function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=1)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
     gene2 = deepcopy(tree2)
@@ -34,12 +35,14 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
         dropmissing!(all_branches)
         rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"]
         rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
-        kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
+        z_1 = zscores(rates_1)
+        z_2 = zscores(rates_2)
+        kept_edges = intersect(findall(<(cutoff),abs.(z_1)),findall(<(cutoff),abs.(z_2)))
         if(length(kept_edges)>3)
-            z_1 = zscores(rates_1[kept_edges])
-            z_2 = zscores(rates_2[kept_edges])
-            r = cor(z_1,z_2)
-            pval = pvalue(CorrelationTest(z_1,z_2))
+            #z_1 = zscores(rates_1[kept_edges])
+            #z_2 = zscores(rates_2[kept_edges])
+            r = cor(z_1[kept_edges],z_2[kept_edges])
+            pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
         else 
             #Too few edges with values below cutoff
             r = missing
@@ -61,24 +64,38 @@ end
 Calculate a set of ERC values given a list of gene trees `trees` and a species tree `species_tree`. Returns DataFrame object with five columns. 
 """
 
-function runERC_files(trees,species_tree;cutoff=5)
+function runERC_files(trees,species_tree;cutoff=5,ckp_freq=1000000,ckp_file=nothing)
     num_comp = binomial(length(trees),2)
-    p = Progress(num_comp,desc="Calculating ERC scores:")
+    total = collect(1:num_comp)
     local ERC_res=DataFrame(missings(Float64,num_comp,5),[:i,:j,:n_edges,:r,:pval])
-    @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
-        if(j>i)
-            ti = read_tree(trees[i])
-            tj = read_tree(trees[j])
-            index = index_func(i,j,length(trees))
-            try
-                ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
-            catch
-                #println("ERC failed to calculate for $(i), $(j)")
-                #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
-                ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:pval =>missing)
-            end
-            next!(p)
+    ERC_res.i = reduce(vcat,[repeat([x],inner=length(trees)-x) for x in 1:length(trees)])
+    ERC_res.j = reduce(vcat,[collect(x:12516) for x in 2:12516])
+    done = 0
+    if (!isnothing(ckp_file))
+        if isfile(ckp_file)
+            ERC_res = DataFrame(Arrow.Table(ckp_file))
+            total = setdiff(total,findall(completecases(ERC_res)))
+            done = length(findall(completecases(ERC_res)))
         end
+    end
+    p = Progress(num_comp,desc="Calculating ERC scores:")
+    @floop ThreadedEx() for index in total
+        i = ERC_res.i[index]
+        j = ERC_res.j[index]
+        ti = read_tree(trees[i])
+        tj = read_tree(trees[j])
+        try
+            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
+        catch
+            #println("ERC failed to calculate for $(i), $(j)")
+            #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
+            ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:pval =>missing)
+        end
+        done += 1
+        if (done % ckp_freq == 0 & !isnothing(ckp_file))
+            Arrow.write(ckp_file,ERC_res)
+        end
+        next!(p)
     end
     return(ERC_res)
 end
