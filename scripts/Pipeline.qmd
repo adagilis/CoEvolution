@@ -269,14 +269,14 @@ ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x
 include(srcdir("ERC_simulations.jl"))
 
 #Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
-ERC_null = calculate_ERC_exp_null(species_tree,1000)
+ERC_null = calculate_ERC_exp_null(species_tree,100)
 disallowmissing!(ERC_sims)
 null_cdf = ecdf(ERC_null.r)
 
 ERC.null = null_cdf.(ERC.r)
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,5.0,100,40,70)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=1)
+trees_null = simulate_tree_set(species_tree,1.0,100,40,70)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 disallowmissing!(ERC_sims)
 sim_cdf = ecdf(ERC_sims.r)
 

@@ -120,3 +120,9 @@ function runERC_collection(trees,species_tree;cutoff=5)
     end
     return(ERC_res)
 end
+
+
+
+function fisher_trans(r,n_edges)
+    return atanh(r) * sqrt(n_edges-3)
+end
