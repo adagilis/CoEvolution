@@ -33,16 +33,12 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=1)
         rename!(branches_2,:bl => :bl_2)
         all_branches = innerjoin(innerjoin(scale_rates,branches_1,on=:node),branches_2,on=:node)
         dropmissing!(all_branches)
-        rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"]
-        rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
-        z_1 = zscores(rates_1)
-        z_2 = zscores(rates_2)
-        kept_edges = intersect(findall(<(cutoff),abs.(z_1)),findall(<(cutoff),abs.(z_2)))
+        rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"] .* (median(all_branches.bl_sp)/median(all_branches.bl_1))
+        rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"] .* (median(all_branches.bl_sp)/median(all_branches.bl_2))
+        kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>3)
-            #z_1 = zscores(rates_1[kept_edges])
-            #z_2 = zscores(rates_2[kept_edges])
-            r = cor(z_1[kept_edges],z_2[kept_edges])
-            pval = pvalue(CorrelationTest(z_1[kept_edges],z_2[kept_edges]))
+            r = cor(rates_1[kept_edges],rates_2[kept_edges])
+            pval = pvalue(CorrelationTest(rates_1[kept_edges],rates_2[kept_edges]))
         else 
             #Too few edges with values below cutoff
             r = missing
@@ -69,7 +65,7 @@ function runERC_files(trees,species_tree;cutoff=5,ckp_freq=1000000,ckp_file=noth
     total = collect(1:num_comp)
     local ERC_res=DataFrame(missings(Float64,num_comp,5),[:i,:j,:n_edges,:r,:pval])
     ERC_res.i = reduce(vcat,[repeat([x],inner=length(trees)-x) for x in 1:length(trees)])
-    ERC_res.j = reduce(vcat,[collect(x:12516) for x in 2:12516])
+    ERC_res.j = reduce(vcat,[collect(x:length(trees)) for x in 2:length(trees)])
     done = 0
     if (!isnothing(ckp_file))
         if isfile(ckp_file)

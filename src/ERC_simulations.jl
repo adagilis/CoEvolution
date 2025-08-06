@@ -11,6 +11,14 @@ using LinearAlgebra
 include("Phylo_utilities.jl")
 include("Stats_utilities.jl")
 
+"""
+simulate_tree_set(species_tree,scale,genes,min_tips,max_tips) -> Vector{Trees}
+
+Takes a species tree and simulates a bunch of trees using a random subsample of tree tips for each simulation.
+The scale parameter is meant to rescale when the tree is not in coalescent units, but does not seem to work, so keep set to 1.
+
+"""
+
 function simulate_tree_set(species_tree,scale,genes,min_tips,max_tips)
     tips = rand(min_tips:max_tips,genes)
     gene_trees = [simulate_subsampled_tree(species_tree,tips[i],scale) for i in 1:genes]
