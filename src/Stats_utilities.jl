@@ -11,7 +11,7 @@ using Missings
     performs correlation tests for all rows or columns of a matrix, and returns a data frame listing the row vs column compared, the r value and the pvalue of a t-test
 """
 
-function cor_test_matrix(m,dim)
+function cor_test_matrix(m,dim;cutoff=nothing)
     dims=size(m)
     num_comp = binomial(dims[dim],2)
     cor_res = DataFrame(missings(Float64,num_comp,4),[:i,:j,:r,:pval])
@@ -23,7 +23,13 @@ function cor_test_matrix(m,dim)
             elseif dim==2
                 sx, sy = collect.(skipmissings(m[:,i],m[:,j])) 
             end
+            if isfinite(cutoff)
+                idx = intersect(findall(sx .< cutoff),findall(sy .< cutoff))
+                sx = sx[idx]
+                sy = sy[idx]
+            end
             if length(sx)>4
+
                 cor_test = CorrelationTest(sx,sy)
                 cor_res[index,:] = Dict(:i=>i,:j=>j,:r=>cor_test.r,:pval=>pvalue(cor_test))
             else 

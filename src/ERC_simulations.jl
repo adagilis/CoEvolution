@@ -34,19 +34,20 @@ function simulate_subsampled_tree(species_tree,n,scale)
     net = phylo_to_net(copy_tree)
     sim = simulatecoalescent(net,1,1;nodemapping=true)[1]
     tree = net_to_phylo(removedegree2nodes!(sim))
+    rescale_tree!(tree,1/scale)
     return(tree)
 end
 
-function calculate_ERC_exp_null(species_tree,n)
+function calculate_ERC_exp_null(species_tree,n;cutoff=5)
     bls = get_branch_lengths(species_tree)
     #random, iid sampling of branches, normalization
     sampled_bls = zeros(length(bls),n)
     for i in 1:length(bls)
         rate = Exponential(bls[i])
-        sampled_bls[i,:] = rand(rate,n)./bls[i]
+        sbls = rand(rate,n)
+        sampled_bls[i,:] = sbls./bls[i]
     end
     #calculate ERC for whole dataset
-    zs = stack(zscores.(eachcol(sampled_bls)))
-    cor_table = cor_test_matrix(zs,2)
+    cor_table = cor_test_matrix(sampled_bls,2;cutoff=cutoff)
     return(cor_table)
 end

@@ -77,7 +77,7 @@ include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 ```
 
-```{julia}
+```{zs{julia}
 #Now run the below, and go off to grab some tea, or take a break for the day.
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
@@ -114,13 +114,16 @@ run_astral(finished_trees)
 
 ## Calculating ERC
 
-Now that all of the trees should be built, we can calculate ERC.
+If you are using your own trees, start here!
+
+You will need two specify the species tree and the list of trees to compare.
 
 ```{julia}
 #Change if using some other species tree.
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
+trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
 
-ERC = runERC_files(finished_trees,species_tree)
+ERC = runERC_files(finished_trees,specie8s_tree;cutoff=5)
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
@@ -228,7 +231,7 @@ cor_mat.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(cor_mat)]
 rename!(cor_mat,"r"=>"int_r")
 rename!(cor_mat,"pval"=>"int_pval")
 using Arrow
-Arrow.write(data_dir*focal*"_coInt.Arrow")
+Arrow.write(data_dir*focal*"_coInt.Arrow",cor_mat)
 ```
 
 ## ERC network analysis
@@ -241,6 +244,7 @@ We start by looking at the broad set of ERC scores. How do they compare to some 
 gene_table = CSV.read(data_dir*focal*"_gene_table.csv",DataFrame)
 using Arrow
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
+ERC = ERC[findall(isfinite.(ERC.r)),:]
 
 id_i = indexin(ERC.i,gene_table.gene)
 id_j = indexin(ERC.j,gene_table.gene)
@@ -256,8 +260,65 @@ ERC.pos_j_2 = gene_table.pos_2[id_j]
 
 ERC.dist = missings(Int64,length(ERC.i))
 intra = findall(ERC.chr_i .== ERC.chr_j)
+ERC.same_chr .= "different"
+ERC.same_chr[intra] .= "same"
 ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x in eachrow(ERC[intra,:])]
 
+Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
+```
+
+Now we generate some basic summary plots for the data:
+
+```{julia}
+
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
+using Plots, StatsPlots, Measures, LaTeXStrings
+
+fig1_a = histogram(ERC.r,
+    xlabel="ERC score",
+    ylabel="Count",
+    legend=false,
+    margins=4mm)
+
+fig1_b = histogram2d(ERC.r,ERC.n_edges,
+    xlabel="ERC Score",
+    ylabel="Shared Edges",
+    margins=4mm,
+    c=cgrad(:vik,scale=:log10)
+)
+
+fig1_c =  @df ERC density(:r,group={Chromosome=:same_chr},legend=:topleft,
+        xlabel="ERC Score",
+        ylabel="Density")
+
+sub_ERC = ERC[findall((!ismissing).(ERC.dist)),:]
+
+fig1_d = histogram2d(sub_ERC.dist .+1,sub_ERC.r,
+                  xlabel="Pair Distance",
+                  ylabel="ERC Score",
+                  xscale=:log10,
+                  xlim=extrema(sub_ERC.dist .+ 1),
+                  xticks = ([1,11,101,1001,10001,100001,1000001,10000001],["0",L"10^1",L"10^2",L"10^3",L"10^4",L"10^5",L"10^6",L"10^7"]),
+                  c=cgrad(:vik,scale=:log10),clims=(0,200000))
+
+l = @layout[
+    a{0.}
+]
+
+plot(fig1_a,fig1_b,fig1_c,fig1_d;layout=4,title=["A" "B" "C"])
+
+ERC.chr_combo = [join(sort([x.chr_i,x.chr_j]),"-") for x in eachrow(ERC)]
+
+by_chr = groupby(ERC,:chr_combo)
+
+chr_summary = combine(by_chr,
+    :r => 
+    (r -> (mean=mean(r),
+            sd=std(r)))=> AsTable)
+
+sup_fig1_a = @df sub_ERC density(:r,group=(:chr_combo))
+
+sup_fig1_b
 ```
 
 ### Generating a "significant" set of edges
@@ -270,13 +331,13 @@ include(srcdir("ERC_simulations.jl"))
 
 #Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
-disallowmissing!(ERC_sims)
+disallowmissing!(ERC_null)
 null_cdf = ecdf(ERC_null.r)
 
 ERC.null = null_cdf.(ERC.r)
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,5.0,100,40,70)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=1)
+trees_null = simulate_tree_set(species_tree,100,100,40,70)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
 disallowmissing!(ERC_sims)
 sim_cdf = ecdf(ERC_sims.r)
 
