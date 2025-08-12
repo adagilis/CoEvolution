@@ -5,6 +5,7 @@ using DataFrames
 using HypothesisTests
 using Loess
 using Missings
+using CategoricalArrays
 
 """
     cor_test_matrix(m,dim) -> DataFrame(i,j,r,pval)
@@ -108,4 +109,29 @@ function range_dist(x,y)
     else
         return(maximum([0,sort(x)[1]-sort(y)[2]]))
     end
+end
+
+
+function binned_mean(df::DataFrame,x_wnd::Int,y_wnd::Int)
+    x_edge = 0:x_wnd:(maximum(df[:,2])+1)
+    y_edge = 0:y_wnd:(maximum(df[:,2])+1)
+
+    fmt(from, to, i; leftclosed, rightclosed) = (from + to)/2
+    df.x_bin = cut(df[:,1], x_edge,labels=fmt;extend=true)
+    df.y_bin = cut(df[:,2], y_edge,labels=fmt;extend=true)
+
+    df.x_bin = unwrap.(df.x_bin)
+    df.y_bin = unwrap.(df.y_bin)
+    return(combine(groupby(df,[:x_bin,:y_bin]),nrow, 3=>mean))
+end
+
+function binned_mean(x::Vector,y::Vector,x_wnd::Int)
+    x_edge = 0:x_wnd:(maximum(df[:,2])+1)
+
+    fmt(from, to, i; leftclosed, rightclosed) = (from + to)/2
+    x_bin = cut(x, x_edge,labels=fmt;extend=true)
+
+    x_bin = unwrap.(x_bin)
+    df = DataFrame(x_bin=x_bin,y=y)
+    return(combine(groupby(df,:x_bin),nrow, 2=>mean))
 end

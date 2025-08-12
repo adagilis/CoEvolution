@@ -77,7 +77,7 @@ include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 ```
 
-```{zs{julia}
+```{julia}
 #Now run the below, and go off to grab some tea, or take a break for the day.
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
@@ -176,12 +176,222 @@ close(coords)
 
 ```
 
-## Introgression stats
+## ERC network analysis
 
-One comparison we make is to examine how introgression correlations compare to co-evolution.
+### Broad analysis of scores
+
+We start by looking at the broad set of ERC scores. How do they compare to some potential theoretical nulls, and do they map to any interesting gene features?
+
+```{julia}
+gene_table = CSV.read(data_dir*focal*"_gene_table.csv",DataFrame)
+using Arrow
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
+ERC = ERC[findall(isfinite.(ERC.r)),:]
+
+id_i = indexin(ERC.i,gene_table.gene)
+id_j = indexin(ERC.j,gene_table.gene)
+
+ERC.chr_i = gene_table.chr[id_i]
+ERC.chr_j = gene_table.chr[id_j]
+
+ERC.pos_i_1 = gene_table.pos_1[id_i]
+ERC.pos_i_2 = gene_table.pos_2[id_i]
+
+ERC.pos_j_1 = gene_table.pos_1[id_j]
+ERC.pos_j_2 = gene_table.pos_2[id_j]
+
+ERC.dist = missings(Int64,length(ERC.i))
+intra = findall(ERC.chr_i .== ERC.chr_j)
+ERC.same_chr .= "different"
+ERC.same_chr[intra] .= "same"
+ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x in eachrow(ERC[intra,:])]
+
+Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
+```
+
+Now we generate some basic summary plots for the data:
 
 ```{julia}
 
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
+using Plots, StatsPlots, Measures, LaTeXStrings
+include(srcdir("Plot_utilities.jl"))
+
+fig1_a = histogram(ERC.r,
+    xlabel="ERC score",
+    ylabel="Count",
+    legend=false,
+    margins=4mm)
+
+fig1_b = histogram2d(ERC.r,ERC.n_edges,
+    xlabel="ERC Score",
+    ylabel="Shared Edges",
+    margins=4mm,
+    c=cgrad(:vik,scale=:log10)
+)
+
+fig1_c =  @df ERC density(:r,group={Chromosome=:same_chr},legend=:topleft,
+        xlabel="ERC Score",
+        ylabel="Density")
+
+sub_ERC = ERC[findall((!ismissing).(ERC.dist)),:]
+
+fig1_d = histogram2d(sub_ERC.dist .+1,sub_ERC.r,
+                  xlabel="Pair Distance",
+                  ylabel="ERC Score",
+                  xscale=:log10,
+                  xlim=extrema(sub_ERC.dist .+ 1),
+                  xticks = ([1,11,101,1001,10001,100001,1000001,10000001],["0",L"10^1",L"10^2",L"10^3",L"10^4",L"10^5",L"10^6",L"10^7"]),
+                  c=cgrad(:vik,scale=:log10),clims=(0,20000))
+
+sub_ERC = ERC[intersect(findall(ERC.chr_i .!= "NA"),findall(ERC.chr_j .!= "NA")),:]
+
+sub_ERC.chr_combo = [join(sort([x.chr_i,x.chr_j]),"-") for x in eachrow(sub_ERC)]
+
+by_chr = groupby(sub_ERC,:chr_combo)
+
+chr_summary = combine(by_chr,
+    :r => 
+    (r -> (mean=mean(r),
+            sd=std(r)))=> AsTable)
+
+sup_fig1_a = @df sub_ERC density(:r,group=(:chr_combo))
+
+
+
+```
+
+### Chromosome plot
+
+Julia has no good backend for this (well, neither does R), but I want to plot each pair as a point in a heatmap, with the center of each gene. The issue is converting the location to something meaningful across chromosomes.
+
+Need to have the order of genes consistent between x and y, while accounting for different chromosomes. We'll make dummy X and Y coords here, with the order: 2L,2R,3L,3R,4,X,Y,MT
+
+```{julia}
+
+using Plots: default
+default(show=false)
+
+pos_i = (ERC.pos_i_1 .+ ERC.pos_i_2)./2
+pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
+
+
+chr_order = ["2L","2R","3L","3R","4","X","Y","MT"]
+chr_lengths = [23312347,25254477,28012551,32067996,1271129,23107330,3666928]
+
+pos_i = chr_order_pos(pos_i,ERC.chr_i,chr_order,chr_lengths)
+pos_j = chr_order_pos(pos_j,ERC.chr_j,chr_order,chr_lengths)
+
+
+#Only plot triangle
+pos_map1= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+pos_map2= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+
+#We don't actually want to plot 80 million points, instead we summarize into bins.a
+
+wnd_size=100000
+
+binned_ERC = binned_mean(DataFrame(p1=pos_map1,p2=pos_map2,r=ERC.r),wnd_size,wnd_size)
+
+using ColorSchemes
+cs = ColorSchemes.viridis
+binned_ERC.col = [get(cs,x) for x in binned_ERC.r_mean]
+
+chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,c=binned_ERC.col,legend=false,alpha=0.5,size=(1200,1200);
+           markershape=:square,markersize=1,markerstrokewidth=0,
+           axis=nothing)
+
+
+pos_i = (sig_ERC.pos_i_1 .+ sig_ERC.pos_i_2)./2
+pos_j = (sig_ERC.pos_j_1 .+ sig_ERC.pos_j_2)./2
+
+pos_i = chr_order_pos(pos_i,sig_ERC.chr_i,chr_order,chr_lengths)
+pos_j = chr_order_pos(pos_j,sig_ERC.chr_j,chr_order,chr_lengths)
+
+#Only plot lower triangle
+pos_map2= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+pos_map1= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+
+scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
+
+chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
+vline!(chr_plot,chr_lines,linecolor=:black)
+hline!(chr_plot,chr_lines,linecolor=:black)
+
+savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
+savefig(chr_plot,data_dir*focal*"_chr_fig.png")
+
+```
+
+### Generating a "significant" set of edges
+
+### Analysis of significant edges
+
+```{julia}
+
+include(srcdir("ERC_simulations.jl"))
+species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
+
+#Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
+ERC_null = calculate_ERC_exp_null(species_tree,1000)
+disallowmissing!(ERC_null)
+null_cdf = ecdf(ERC_null.r)
+
+ERC.null = null_cdf.(ERC.r)
+#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
+trees_null = simulate_tree_set(species_tree,100,100,40,70)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
+disallowmissing!(ERC_sims)
+sim_cdf = ecdf(ERC_sims.r)
+
+ERC.sims = sim_cdf.(ERC.r)
+
+gt_sim = findall(ERC.sims .> 0.95)
+sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
+
+CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
+
+gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
+gene_table.mean_r = [mean(ERC.r[union(findall(ERC.i.==x),findall(ERC.j.==x))]) for x in gene_table.gene]
+
+
+l = @layout [
+    a{0.2 w} [b
+              c{0.2h}]
+]
+
+gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
+mean_plot = scatter()
+```
+
+## STRING database
+
+The STRING database contains links between genes based on a variety of metrics. Here, we compare the co-evolution scores versus the STRING score, to see at what cut-off we are reaching all likely interactions.
+
+```{julia}
+
+string_db = CSV.read("data/dipterans/String_dmel.detailed.v12.0.txt",DataFrame)
+string_alias = CSV.read("data/dipterans/String_dmel_protein_info.txt",DataFrame)
+
+
+idx = indexin(gene_table.gene,string_alias.alias)
+idx = replace(idx,nothing => missing)
+gene_table.string_id = missings(String31,length(gene_table.gene))
+gene_table.string_id[findall((!ismissing).(idx))] = string_alias.var"#string_protein_id"[idx[findall((!ismissing).(idx))]]
+
+string_db.id1 = indexin(string_db.protein1,gene_table.string_id)
+string_db.id2 = indexin(string_db.protein2,gene_table.string_id)
+idx = intersect(findall((!isnothing).(string_db.id1)),findall((!isnothing).(string_db.id2)))
+string_db = string_db[idx,:]
+string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
+
+
+joint_tab = innerjoin(ERC,string_db,on=:gid)
+```
+
+## Introgression
+
+```{julia}
 #Calculate introgression statistics
 
 include(srcdir("Introgression_functions.jl"))
@@ -231,143 +441,6 @@ cor_mat.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(cor_mat)]
 rename!(cor_mat,"r"=>"int_r")
 rename!(cor_mat,"pval"=>"int_pval")
 using Arrow
-Arrow.write(data_dir*focal*"_coInt.Arrow",cor_mat)
-```
+Arrow.write(data_dir*focal*"_coInt.Arrow",cor_mat){julia}
 
-## ERC network analysis
-
-### Broad analysis of scores
-
-We start by looking at the broad set of ERC scores. How do they compare to some potential theoretical nulls, and do they map to any interesting gene features?
-
-```{julia}
-gene_table = CSV.read(data_dir*focal*"_gene_table.csv",DataFrame)
-using Arrow
-ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
-ERC = ERC[findall(isfinite.(ERC.r)),:]
-
-id_i = indexin(ERC.i,gene_table.gene)
-id_j = indexin(ERC.j,gene_table.gene)
-
-ERC.chr_i = gene_table.chr[id_i]
-ERC.chr_j = gene_table.chr[id_j]
-
-ERC.pos_i_1 = gene_table.pos_1[id_i]
-ERC.pos_i_2 = gene_table.pos_2[id_i]
-
-ERC.pos_j_1 = gene_table.pos_1[id_j]
-ERC.pos_j_2 = gene_table.pos_2[id_j]
-
-ERC.dist = missings(Int64,length(ERC.i))
-intra = findall(ERC.chr_i .== ERC.chr_j)
-ERC.same_chr .= "different"
-ERC.same_chr[intra] .= "same"
-ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x in eachrow(ERC[intra,:])]
-
-Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
-```
-
-Now we generate some basic summary plots for the data:
-
-```{julia}
-
-ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
-using Plots, StatsPlots, Measures, LaTeXStrings
-
-fig1_a = histogram(ERC.r,
-    xlabel="ERC score",
-    ylabel="Count",
-    legend=false,
-    margins=4mm)
-
-fig1_b = histogram2d(ERC.r,ERC.n_edges,
-    xlabel="ERC Score",
-    ylabel="Shared Edges",
-    margins=4mm,
-    c=cgrad(:vik,scale=:log10)
-)
-
-fig1_c =  @df ERC density(:r,group={Chromosome=:same_chr},legend=:topleft,
-        xlabel="ERC Score",
-        ylabel="Density")
-
-sub_ERC = ERC[findall((!ismissing).(ERC.dist)),:]
-
-fig1_d = histogram2d(sub_ERC.dist .+1,sub_ERC.r,
-                  xlabel="Pair Distance",
-                  ylabel="ERC Score",
-                  xscale=:log10,
-                  xlim=extrema(sub_ERC.dist .+ 1),
-                  xticks = ([1,11,101,1001,10001,100001,1000001,10000001],["0",L"10^1",L"10^2",L"10^3",L"10^4",L"10^5",L"10^6",L"10^7"]),
-                  c=cgrad(:vik,scale=:log10),clims=(0,200000))
-
-l = @layout[
-    a{0.}
-]
-
-plot(fig1_a,fig1_b,fig1_c,fig1_d;layout=4,title=["A" "B" "C"])
-
-ERC.chr_combo = [join(sort([x.chr_i,x.chr_j]),"-") for x in eachrow(ERC)]
-
-by_chr = groupby(ERC,:chr_combo)
-
-chr_summary = combine(by_chr,
-    :r => 
-    (r -> (mean=mean(r),
-            sd=std(r)))=> AsTable)
-
-sup_fig1_a = @df sub_ERC density(:r,group=(:chr_combo))
-
-sup_fig1_b
-```
-
-### Generating a "significant" set of edges
-
-### Analysis of significant edges
-
-```{julia}
-
-include(srcdir("ERC_simulations.jl"))
-
-#Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
-ERC_null = calculate_ERC_exp_null(species_tree,1000)
-disallowmissing!(ERC_null)
-null_cdf = ecdf(ERC_null.r)
-
-ERC.null = null_cdf.(ERC.r)
-#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,100,100,40,70)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
-disallowmissing!(ERC_sims)
-sim_cdf = ecdf(ERC_sims.r)
-
-ERC.sims = sim_cdf.(ERC.r)
-
-
-CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
-```
-
-## STRING database
-
-The STRING database contains links between genes based on a variety of metrics. Here, we compare the co-evolution scores versus the STRING score, to see at what cut-off we are reaching all likely interactions.
-
-```{julia}
-
-string_db = CSV.read("data/dipterans/String_dmel.detailed.v12.0.txt",DataFrame)
-string_alias = CSV.read("data/dipterans/String_dmel_protein_info.txt",DataFrame)
-
-
-idx = indexin(gene_table.gene,string_alias.alias)
-idx = replace(idx,nothing => missing)
-gene_table.string_id = missings(String31,length(gene_table.gene))
-gene_table.string_id[findall((!ismissing).(idx))] = string_alias.var"#string_protein_id"[idx[findall((!ismissing).(idx))]]
-
-string_db.id1 = indexin(string_db.protein1,gene_table.string_id)
-string_db.id2 = indexin(string_db.protein2,gene_table.string_id)
-idx = intersect(findall((!isnothing).(string_db.id1)),findall((!isnothing).(string_db.id2)))
-string_db = string_db[idx,:]
-string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
-
-
-joint_tab = innerjoin(ERC,string_db,on=:gid)
 ```
