@@ -30,13 +30,10 @@ println(round(ti/60, digits = 3), " minutes")
 include(srcdir("ERC_simulations.jl"))
 println("Testing ERC_simulations.jl")
 ti = time()
-@testset "ERC_simulations tests" begin
-    trees_simulated = simulate_tree_set(species_tree,0.01,100,length(getleaves(species_tree)),length(getleaves(species_tree)))
-    ERC_simulation = runERC_collection(trees_simulated,species_tree)
-end
+trees_simulated = simulate_tree_set(species_tree,0.01,100,length(getleaves(species_tree)),length(getleaves(species_tree)))
+ERC_simulation = runERC_collection(trees_simulated,species_tree)
 
 ti = time() - ti
 println("\nTest took total time of:")
 println(round(ti/60,digits=3)," minutes to generate 100 trees and calculate ERC")
 
-include(srcdir("Finding_orthologs.jl"))

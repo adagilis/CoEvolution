@@ -113,7 +113,7 @@ function run_astral(trees)
     for t in trees
         run(pipeline(`cat $t`),stdout=treefile,append=true)
     end
-    run(`astral4 -i $treefile -o $data_dir/trees/astral_consensus.newick -u 0 --root $outgroup`)
+    run(`astral4 -i $treefile -o $data_dir/trees/astral_consensus.newick --root $outgroup`)
     run(`rm $treefile`)
 end
 
