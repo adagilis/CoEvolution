@@ -107,7 +107,7 @@ function runERC_collection(trees,species_tree;cutoff=5)
             next!(p)
         end
     end
-    return(ERC_res)
+    return(ERC_res) 
 end
 
 
