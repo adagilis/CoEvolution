@@ -123,7 +123,7 @@ You will need two specify the species tree and the list of trees to compare.
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
 
-ERC = runERC_files(finished_trees,specie8s_tree;cutoff=5)
+ERC = runERC_files(trees,species_tree;cutoff=5)
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
@@ -269,9 +269,6 @@ Need to have the order of genes consistent between x and y, while accounting for
 
 ```{julia}
 
-using Plots: default
-default(show=false)
-
 pos_i = (ERC.pos_i_1 .+ ERC.pos_i_2)./2
 pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
 
@@ -339,7 +336,7 @@ null_cdf = ecdf(ERC_null.r)
 
 ERC.null = null_cdf.(ERC.r)
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,100,100,40,70)
+trees_null = simulate_tree_set(species_tree,100000,100,40,70)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
 disallowmissing!(ERC_sims)
 sim_cdf = ecdf(ERC_sims.r)
