@@ -123,7 +123,7 @@ You will need two specify the species tree and the list of trees to compare.
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
 
-ERC = runERC_files(finished_trees,specie8s_tree;cutoff=5)
+ERC = runERC_files(trees,species_tree;cutoff=5)
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
@@ -140,7 +140,7 @@ ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
 We next build a table that includes all of the gene information. This is based off of the .gff file for your reference of interest.
 
-The chr_dict is just a quick conversion from NCBIs chr ids to something human readable - you'll have to make your own for your system. If you have hundreds of chromosomes/scaffolds, this can be skipped.
+The chr_dict is just a quick conversion from NCBIs chr ids to something human readable - you'll have to make your own for your system. Note, we drop anything that's on an unmapped scaffold in the process, in our case 6 genes. If you have hundreds of chromosomes/scaffolds, this step can be skipped, or you can use `Julia`s ability to make Dicts iteratively.
 
 ```{julia}
 using CSV
@@ -164,15 +164,7 @@ for g in 1:length(genes)
 end
 
 CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
-#Output coordinate file, this will be converted to dmel5 coordinates for vcf analysis
 
-coords = open(data_dir*"gene_coords.txt","a")
-
-for i in 1:length(gene_table.chr)
-    write(coords,gene_table.chr[i]*":"*string(gene_table.pos_1[i])*"-"*string(gene_table.pos_2[i])*"\n")
-end
-
-close(coords)
 
 ```
 
@@ -269,9 +261,6 @@ Need to have the order of genes consistent between x and y, while accounting for
 
 ```{julia}
 
-using Plots: default
-default(show=false)
-
 pos_i = (ERC.pos_i_1 .+ ERC.pos_i_2)./2
 pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
 
@@ -302,23 +291,6 @@ chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,c=binned_ERC.col,legend=fal
            axis=nothing)
 
 
-pos_i = (sig_ERC.pos_i_1 .+ sig_ERC.pos_i_2)./2
-pos_j = (sig_ERC.pos_j_1 .+ sig_ERC.pos_j_2)./2
-
-pos_i = chr_order_pos(pos_i,sig_ERC.chr_i,chr_order,chr_lengths)
-pos_j = chr_order_pos(pos_j,sig_ERC.chr_j,chr_order,chr_lengths)
-
-#Only plot lower triangle
-pos_map2= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
-pos_map1= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
-
-scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
-
-chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
-vline!(chr_plot,chr_lines,linecolor=:black)
-hline!(chr_plot,chr_lines,linecolor=:black)
-
-savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
 savefig(chr_plot,data_dir*focal*"_chr_fig.png")
 
 ```
@@ -339,18 +311,21 @@ null_cdf = ecdf(ERC_null.r)
 
 ERC.null = null_cdf.(ERC.r)
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,100,100,40,70)
+trees_null = simulate_tree_set(species_tree,100000,100,40,70)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
 disallowmissing!(ERC_sims)
 sim_cdf = ecdf(ERC_sims.r)
 
 ERC.sims = sim_cdf.(ERC.r)
 
+#Take only edges outside of expectation from coalescent sims.
 gt_sim = findall(ERC.sims .> 0.95)
+#Bonferroni corrected pvalues to get significant edges on the resulting data.
 sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
 
 CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 
+#Annotate the gene table.
 gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
 gene_table.mean_r = [mean(ERC.r[union(findall(ERC.i.==x),findall(ERC.j.==x))]) for x in gene_table.gene]
 
@@ -363,6 +338,66 @@ l = @layout [
 gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
 mean_plot = scatter()
 ```
+
+## Plotting significant edges
+
+We next plot the significant edges
+
+```{julia}
+
+pos_i = (sig_ERC.pos_i_1 .+ sig_ERC.pos_i_2)./2
+pos_j = (sig_ERC.pos_j_1 .+ sig_ERC.pos_j_2)./2
+
+pos_i = chr_order_pos(pos_i,sig_ERC.chr_i,chr_order,chr_lengths)
+pos_j = chr_order_pos(pos_j,sig_ERC.chr_j,chr_order,chr_lengths)
+
+#Only plot lower triangle
+pos_map2= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+pos_map1= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+
+scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
+
+chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
+vline!(chr_plot,chr_lines,linecolor=:black)
+hline!(chr_plot,chr_lines,linecolor=:black)
+
+savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
+```
+
+## Community detection
+
+We next detect communities of genes based on co-evolutionary interactions. We use the Louvain clustering approach, which tries to maximize modularity within each community (e.g. how dense interactions are within each community versus out of it). Several other approaches may be favorable (Louvain, for instance, does not allow a single gene to belong to multiple communities, when in practice it probably does), but implementation is pending (see wGHAC.py in the src directory).
+
+Here, we first output the graph as a .gml file, which can then be used in the R script for Louvain clustering and in the python script for wGHAC clustering.
+
+```{julia}
+using Graphs, SimpleWeightedGraphs
+
+
+
+```
+
+Now for Louvain clustering and cluster visualization we turn to R
+
+```{r}
+
+```
+
+Finally, we can generate the clusters using wGHAC, only implementation is currently in python, but I am writing a `Julia` one eventually...
+
+```{python}
+
+```
+
+## GO analysis
+
+The resulting communities are examined for GO category enrichment. The easiest approach here is to use `GOst`, which has a nice implementation in R, so once again we'll step out of Julia for a bit. (But isn't quarto great in that it deals with all three nicely! Thanks Quarto team!)
+
+## Expression analysis
+
+### Tissue
+
+### Timing
 
 ## STRING database
 
@@ -392,7 +427,16 @@ joint_tab = innerjoin(ERC,string_db,on=:gid)
 ## Introgression
 
 ```{julia}
-#Calculate introgression statistics
+#Output coordinate file, this will be converted to dmel5 coordinates for vcf analysis, as the vcf we use is mapped to dmel5. 
+
+coords = open(data_dir*"gene_coords.txt","a")
+
+for i in 1:length(gene_table.chr)
+    write(coords,gene_table.chr[i]*":"*string(gene_table.pos_1[i])*"-"*string(gene_table.pos_2[i])*"\n")
+end
+
+close(coords)
+
 
 include(srcdir("Introgression_functions.jl"))
 using FLoops

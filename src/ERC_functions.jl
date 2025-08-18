@@ -12,10 +12,12 @@ include("Stats_utilities.jl")
 """
     calculate_ERC(gene1,gene2,species_tree;cutoff=5) → [cor,p-value]
 Function which takes two gene trees and a species tree, and returns the Evolutionary Rate Correlation between the two genes.
-ERC is defined as the correlation of relativized evolutionary rates between two trees.
-Unlike prior approaches, we scale the branches not only by the branch length in the species tree, but also by a ratio of the median branch lengths of the species and gene trees.
-This corrects for bias when fast evolving genes have most branches dropped due to rates exceeding the suggested cutoff of 5x the species rate. 
+ERC is defined as the correlation of relativized evolutionary rates between two trees. We use the approach as defined by Clark, with the default cutoff of 5 chosen based on Steenwyk et al.
 
+Important notes: I think this approach has more to give. There are definitely issues with discounting branches above an arbitrary rate threshold - rapidly evolving genes can get dropped entirely.
+Similarly, I don't perform the z-transform as done in both prior approaches because it's simply redundant (cov(zx,zy)=cor(x,y)=cov(x,y)=cor(zx,zy)).
+
+In short - there's definitely more to develop this approach, but we're sticking to published methods here for simplicity.
 """
 
 function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
@@ -35,8 +37,8 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
         rename!(branches_2,:bl => :bl_2)
         all_branches = innerjoin(innerjoin(scale_rates,branches_1,on=:node),branches_2,on=:node)
         dropmissing!(all_branches)
-        rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"] .* (median(all_branches.bl_sp)/median(all_branches.bl_1))
-        rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"] .* (median(all_branches.bl_sp)/median(all_branches.bl_2))
+        rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"] 
+        rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>3)
             r = cor(rates_1[kept_edges],rates_2[kept_edges])
@@ -107,5 +109,11 @@ function runERC_collection(trees,species_tree;cutoff=5)
             next!(p)
         end
     end
-    return(ERC_res)
+    return(ERC_res) 
+end
+
+
+
+function fisher_trans(r,n_edges)
+    return atanh(r) * sqrt(n_edges-3)
 end
