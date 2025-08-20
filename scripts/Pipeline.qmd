@@ -304,15 +304,9 @@ savefig(chr_plot,data_dir*focal*"_chr_fig.png")
 include(srcdir("ERC_simulations.jl"))
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 
-#Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
-ERC_null = calculate_ERC_exp_null(species_tree,1000)
-disallowmissing!(ERC_null)
-null_cdf = ecdf(ERC_null.r)
-
-ERC.null = null_cdf.(ERC.r)
-#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,100000,100,40,70)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
+#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences. The scale parameter (400) is chosen to convert the ASTRAL tree lengths to reasonable coalescent units based on D_mel-D-sim back of envelope estimate. This is rough, but still provides very strong correlations.
+trees_null = simulate_tree_set(species_tree,400,100,40,70)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 disallowmissing!(ERC_sims)
 sim_cdf = ecdf(ERC_sims.r)
 
@@ -330,13 +324,6 @@ gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x
 gene_table.mean_r = [mean(ERC.r[union(findall(ERC.i.==x),findall(ERC.j.==x))]) for x in gene_table.gene]
 
 
-l = @layout [
-    a{0.2 w} [b
-              c{0.2h}]
-]
-
-gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
-mean_plot = scatter()
 ```
 
 ## Plotting significant edges
@@ -362,6 +349,14 @@ vline!(chr_plot,chr_lines,linecolor=:black)
 hline!(chr_plot,chr_lines,linecolor=:black)
 
 savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
+
+l = @layout [
+    a{0.2 w} [b
+              c{0.2h}]
+]
+
+gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
+mean_plot = scatter()
 ```
 
 ## Community detection
@@ -371,15 +366,21 @@ We next detect communities of genes based on co-evolutionary interactions. We us
 Here, we first output the graph as a .gml file, which can then be used in the R script for Louvain clustering and in the python script for wGHAC clustering.
 
 ```{julia}
-using Graphs, SimpleWeightedGraphs
+using Graphs, SimpleWeightedGraphs, GraphIO, SGtSNEpi
+include(srcdir("Graphs_utilities.jl"))
+
+graph = construct_ERC_graph(sig_ERC)
+
+node_IDs = Dict(1:length(unique(union(sig_ERC.i,sig_ERC.j))) .=> sort(unique(union(sig_ERC.i,sig_ERC.j))))
+
+savegraph(datadir*focal*"_graphs.gml",graph,GMLFormat())
+
+#Note: we ignore weights in the Louvain calculation.
+communities = Louvain_communities(sig_ERC)
+
+Y = sgtsnepi(graph)
 
 
-
-```
-
-Now for Louvain clustering and cluster visualization we turn to R
-
-```{r}
 
 ```
 
