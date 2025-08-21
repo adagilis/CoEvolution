@@ -170,6 +170,34 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
 ## ERC network analysis
 
+### Finding significant edges
+
+```{julia}
+include(srcdir("ERC_simulations.jl"))
+species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
+
+#Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
+ERC_null = calculate_ERC_exp_null(species_tree,1000)
+disallowmissing!(ERC_null)
+ERC_null.fERC = fisher_trans.(ERC_null.r,length(get_branch_lengths(species_tree)))
+null_cdf = ecdf(ERC_null.fERC)
+
+ERC.null = null_cdf.(ERC.fERC)
+#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
+trees_null = simulate_tree_set(species_tree,40,1000,40,70)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
+disallowmissing!(ERC_sims)
+sim_cdf = ecdf(ERC_sims.fERC)
+ERC.sims = sim_cdf.(ERC.fERC)
+
+#Take only edges outside of expectation from coalescent sims.
+gt_sim = findall(ERC.sims .> 0.95)
+#Bonferroni corrected pvalues to get significant edges on the resulting data.
+sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
+
+CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
+```
+
 ### Broad analysis of scores
 
 We start by looking at the broad set of ERC scores. How do they compare to some potential theoretical nulls, and do they map to any interesting gene features?
@@ -206,50 +234,65 @@ Now we generate some basic summary plots for the data:
 ```{julia}
 
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
-using Plots, StatsPlots, Measures, LaTeXStrings
+
+
+using CairoMakie, LaTeXStrings
 include(srcdir("Plot_utilities.jl"))
 
-fig1_a = histogram(ERC.r,
-    xlabel="ERC score",
-    ylabel="Count",
-    legend=false,
-    margins=4mm)
+fig1 = Figure(1200,1200)
+ax1 = Axis(fig1[1,1],
+    xlabel="fERC score",
+    ylabel="Density",
+    xgridvisible=false,
+    ygridvisible=false)
 
-fig1_b = histogram2d(ERC.r,ERC.n_edges,
-    xlabel="ERC Score",
-    ylabel="Shared Edges",
-    margins=4mm,
-    c=cgrad(:vik,scale=:log10)
-)
+hist!(ax1,ERC_sims.fERC,bins=100,
+       label="Positive Simulations",normalization=:pdf,
+       strokecolor=:purple,color=(:purple,0.5))
 
-fig1_c =  @df ERC density(:r,group={Chromosome=:same_chr},legend=:topleft,
-        xlabel="ERC Score",
-        ylabel="Density")
+hist!(ax1,ERC_null.fERC,bins=100,
+       label="Null Expectation",normalization=:pdf,
+       strokecolor=:orange,color=(:orange,0.5))
+
+hist!(ax1,ERC.fERC,bins=200,
+    label="Real Data",normalization=:pdf,
+       strokecolor=:blue,color=(:blue,0.5))
+xlims!(ax1,(-5,12.5))
+
+axislegend(ax1,merge=true,unique=true)
+
+ax, hm = hexbin(fig1[1,2],ERC.fERC,ERC.n_edges,
+    colormap=[Makie.to_color(:transparent);Makie.to_colormap(:viridis)],
+    axis= (; xgridvisible=false,ygridvisible=false,
+             xlabel="fERC",ylabel="Shared Edges"),
+    colorscale=Makie.pseudolog10,
+    bins=(50,50),
+    threshold=0)
+Colorbar(fig1[1,2][1,2],hm,ticks=[1,10,100,1000,10000,100000,1000000])
+
+ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["Same","Different"]),xlabel="fERC",ylabel="Pair on _ chromosomes")
+
+sferc = [ERC.fERC[findall(ERC.same_chr.=="same")],ERC.fERC[findall(ERC.same_chr.=="different")]]
+for i in 1:2
+    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,10],
+    strokecolor=:black,strokewidth=1)
+    translate!(d,0,0,-0.1i)
+end
+xlims!(ax2,(-5,10))
 
 sub_ERC = ERC[findall((!ismissing).(ERC.dist)),:]
 
-fig1_d = histogram2d(sub_ERC.dist .+1,sub_ERC.r,
-                  xlabel="Pair Distance",
+ax,hm = hexbin(fig1[2,2],sub_ERC.dist,sub_ERC.fERC,
+           colorscale=Makie.pseudolog10,
+           bins=(50,50),
+           axis=(; xlabel="Pair Distance (bp)",
                   ylabel="ERC Score",
-                  xscale=:log10,
-                  xlim=extrema(sub_ERC.dist .+ 1),
-                  xticks = ([1,11,101,1001,10001,100001,1000001,10000001],["0",L"10^1",L"10^2",L"10^3",L"10^4",L"10^5",L"10^6",L"10^7"]),
-                  c=cgrad(:vik,scale=:log10),clims=(0,20000))
+                  xscale=Makie.pseudolog10,
+                  xticks=([0,10,1000,100000,10000000],[L"0",L"10",L"10^3",L"10^5",L"10^7"]),
+                  xgridvisible=false,ygridvisible=false))
+Colorbar(fig1[2,2][1,2],hm,ticks=[1,100,1000,10000,100000,1000000])
 
-sub_ERC = ERC[intersect(findall(ERC.chr_i .!= "NA"),findall(ERC.chr_j .!= "NA")),:]
-
-sub_ERC.chr_combo = [join(sort([x.chr_i,x.chr_j]),"-") for x in eachrow(sub_ERC)]
-
-by_chr = groupby(sub_ERC,:chr_combo)
-
-chr_summary = combine(by_chr,
-    :r => 
-    (r -> (mean=mean(r),
-            sd=std(r)))=> AsTable)
-
-sup_fig1_a = @df sub_ERC density(:r,group=(:chr_combo))
-
-
+savefig(fig1,data_dir*focal*"_Fig1.pdf")
 
 ```
 
@@ -267,6 +310,7 @@ pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
 
 chr_order = ["2L","2R","3L","3R","4","X","Y","MT"]
 chr_lengths = [23312347,25254477,28012551,32067996,1271129,23107330,3666928]
+chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
 
 pos_i = chr_order_pos(pos_i,ERC.chr_i,chr_order,chr_lengths)
 pos_j = chr_order_pos(pos_j,ERC.chr_j,chr_order,chr_lengths)
@@ -286,7 +330,19 @@ using ColorSchemes
 cs = ColorSchemes.viridis
 binned_ERC.col = [get(cs,x) for x in binned_ERC.r_mean]
 
-chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,c=binned_ERC.col,legend=false,alpha=0.5,size=(1200,1200);
+fig2 = Figure()
+#Mean gene fERC plot
+ax1 = Axis(f[1,1],xlabel="fERC",ylabel="Position",yticks=[],xgridvisible=false,ytickvisible=false,yticks=chr_lines)
+
+#Genome-wide interaction plot
+ax2 = Axis(f[1,2],xlabel="fERC",ylabel="Position",yticks=[],xgridvisible=false,ygridvisible=false)
+
+
+#Significant interaction plot
+ax3 = Axis(f[2,1])
+
+
+chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,marker_z=binned_ERC.r_mean,markercolor=cgrad(:viridis),legend=false,alpha=0.5,size=(800,800);
            markershape=:square,markersize=1,markerstrokewidth=0,
            axis=nothing)
 
@@ -301,28 +357,40 @@ savefig(chr_plot,data_dir*focal*"_chr_fig.png")
 
 ```{julia}
 
-include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
-
-#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences. The scale parameter (400) is chosen to convert the ASTRAL tree lengths to reasonable coalescent units based on D_mel-D-sim back of envelope estimate. This is rough, but still provides very strong correlations.
-trees_null = simulate_tree_set(species_tree,400,100,40,70)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
-disallowmissing!(ERC_sims)
-sim_cdf = ecdf(ERC_sims.r)
-
-ERC.sims = sim_cdf.(ERC.r)
-
-#Take only edges outside of expectation from coalescent sims.
-gt_sim = findall(ERC.sims .> 0.95)
-#Bonferroni corrected pvalues to get significant edges on the resulting data.
-sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
-
-CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 
 #Annotate the gene table.
+function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);done
+idx = map(indexInERC,gene_table.gene)
 gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
-gene_table.mean_r = [mean(ERC.r[union(findall(ERC.i.==x),findall(ERC.j.==x))]) for x in gene_table.gene]
+gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
+gene_table.mean_fERC = [mean(ERC.fr[idx[i]]) for i in 1:length(idx)]
 
+CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
+    
+gene_pos = chr_order_pos((gene_table.pos_1.+gene_table.pos_2)./2,gene_table.chr,chr_order,chr_lengths)
+
+mean_ERC = scatter(gene_pos,gene_table.mean_r,
+           legend=false,
+           ylabel="ERC",
+           marker_z=gene_table.mean_r,
+           c=cgrad(:viridis),
+           marings=4mm,xticks=false,permute=(:x,:y);
+           markerstrokewidth=0,
+           markersize=2)
+
+sig_int_plot = scatter(gene_pos,gene_table.sig_ints .+1,
+           legend=false,
+           ylabel="Significant Interactions",
+           marker_z=gene_table.sig_ints,
+           marings=4mm,xticks=false,yscale=:log10,
+           yticks=([1,2,11,101,1001],["0","1","10","100","1000"]),
+           markercolor=cgrad(["black","red","orange","yellow"],scale=:log10);
+           markerstrokewidth=0,
+           markersize=2)
+
+full_chr = plot(mean_ERC,chr_plot,sig_int_plot;layout=l)
+savefig(full_chr,data_dir*focal*"_fig2.png")
+savefig(full_chr,data_dir*focal*"_fig2.pdf")
 
 ```
 
@@ -344,7 +412,6 @@ pos_map1= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
 
 scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
 
-chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
 vline!(chr_plot,chr_lines,linecolor=:black)
 hline!(chr_plot,chr_lines,linecolor=:black)
 
@@ -373,13 +440,12 @@ graph = construct_ERC_graph(sig_ERC)
 
 node_IDs = Dict(1:length(unique(union(sig_ERC.i,sig_ERC.j))) .=> sort(unique(union(sig_ERC.i,sig_ERC.j))))
 
-savegraph(datadir*focal*"_graphs.gml",graph,GMLFormat())
+savegraph(datadir*focal*"_graphs.gml",graph,GraphIO.GML.GMLFormat())
 
 #Note: we ignore weights in the Louvain calculation.
-communities = Louvain_communities(sig_ERC)
+communities = Louvain_cluster(graph)
 
 Y = sgtsnepi(graph)
-
 
 
 ```
