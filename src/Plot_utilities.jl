@@ -9,26 +9,22 @@ function chr_order_pos(position,chr,chr_order,chr_lengths)
 end
 
 
-function graph_plot(graph,dataframe)
-    
-    #plot nodes
-    cols=scale_colors(dataframe.community)
-    sizes=scale_sizes(dataframe.degree)
-    network_plot= @df dataframe scatter(:x,:y,
-    c=cols,
-    legend=false,
-    size=sizes;
-    axis=([],false),
-    markerstrokewidth=0)
-
+function graph_plot(graph,dataframe;cols=:blue,sizes=1,linealpha=0.05)
     #plot edges
-    id_from = missing
-    id_to = missing
-    df.from_x = dataframe.x[id_from]
-    df.from_y = dataframe.y[id_from]
-    df.to_x = dataframe.x[id_to]
-    df.to_y = dataframe.y[id_to]
-    plot!(
-        [([i.from_x,i.to_x],[i.from_y,i.to_y])  for i in eachrow(df)],
-        c=:black,alpha=0.5,legend=false)
+    A = adjacency_matrix(graph)
+    nz = findnz(triu(A))
+    id_from = nz[1]
+    id_to = nz[2]
+    weights = nz[3]
+    from_x = dataframe[:,1][id_from]
+    from_y = dataframe[:,2][id_from]
+    to_x = dataframe[:,1][id_to]
+    to_y = dataframe[:,2][id_to]
+    df = DataFrame(:from_x=>from_x,:from_y=>from_y,:to_x=>to_x,:to_y=>to_y)
+    network_plot = GLMakie.linesegments(map(floc,eachrow(df)))
+    #plot nodes
+    scatter!(df[:,1],df[:,2])
+    return(network_plot)
 end
+
+function floc(i);((i[1],i[3]),(i[2],i[4]));end
