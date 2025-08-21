@@ -399,6 +399,14 @@ vline!(chr_plot,chr_lines,linecolor=:black)
 hline!(chr_plot,chr_lines,linecolor=:black)
 
 savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
+
+l = @layout [
+    a{0.2 w} [b
+              c{0.2h}]
+]
+
+gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
+mean_plot = scatter()
 ```
 
 ## Community detection
@@ -408,7 +416,19 @@ We next detect communities of genes based on co-evolutionary interactions. We us
 Here, we first output the graph as a .gml file, which can then be used in the R script for Louvain clustering and in the python script for wGHAC clustering.
 
 ```{julia}
+using Graphs, SimpleWeightedGraphs, GraphIO, SGtSNEpi
+include(srcdir("Graphs_utilities.jl"))
 
+graph = construct_ERC_graph(sig_ERC)
+
+node_IDs = Dict(1:length(unique(union(sig_ERC.i,sig_ERC.j))) .=> sort(unique(union(sig_ERC.i,sig_ERC.j))))
+
+savegraph(datadir*focal*"_graphs.gml",graph,GMLFormat())
+
+#Note: we ignore weights in the Louvain calculation.
+communities = Louvain_communities(sig_ERC)
+
+Y = sgtsnepi(graph)
 
 
 
