@@ -23,7 +23,7 @@ function graph_plot(graph,dataframe;cols=:blue,sizes=1,linealpha=0.05)
     df = DataFrame(:from_x=>from_x,:from_y=>from_y,:to_x=>to_x,:to_y=>to_y)
     network_plot = GLMakie.linesegments(map(floc,eachrow(df)))
     #plot nodes
-    scatter!(df[:,1],df[:,2])
+    GLMakie.scatter!(df[:,1],df[:,2])
     return(network_plot)
 end
 
