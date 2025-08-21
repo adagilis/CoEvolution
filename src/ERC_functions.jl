@@ -42,19 +42,22 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>3)
             r = cor(rates_1[kept_edges],rates_2[kept_edges])
+            fERC = fisher_trans(r,kept_edges)
             pval = pvalue(CorrelationTest(rates_1[kept_edges],rates_2[kept_edges]))
         else 
             #Too few edges with values below cutoff
             r = missing
+            fERC = missing
             pval = missing
         end
     else
         #No tip overlap
         r = missing
+        fERC = missing
         pval = missing
         kept_edges = []
     end
-    return(Dict(:i => id1,:j => id2,:n_edges=>length(kept_edges),:r => r,:pval => pval))
+    return(Dict(:i => id1,:j => id2,:n_edges=>length(kept_edges),:r => r,:fERC => fERC,:pval => pval))
 end
 
 
@@ -67,7 +70,7 @@ Calculate a set of ERC values given a list of gene trees `trees` and a species t
 function runERC_files(trees,species_tree;cutoff=5)
     num_comp = binomial(length(trees),2)
     total = collect(1:num_comp)
-    local ERC_res=DataFrame(missings(Float64,num_comp,5),[:i,:j,:n_edges,:r,:pval])
+    local ERC_res=DataFrame(missings(Float64,num_comp,5),[:i,:j,:n_edges,:r,:ferc,:pval])
     ERC_res.i = reduce(vcat,[repeat([x],inner=length(trees)-x) for x in 1:length(trees)])
     ERC_res.j = reduce(vcat,[collect(x:length(trees)) for x in 2:length(trees)])
     p = Progress(num_comp,desc="Calculating ERC scores:")
@@ -80,7 +83,7 @@ function runERC_files(trees,species_tree;cutoff=5)
             ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
         catch
             #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
-            ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:pval =>missing)
+            ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing)
         end
         next!(p)
     end

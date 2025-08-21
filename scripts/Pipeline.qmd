@@ -209,26 +209,37 @@ ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
 using Plots, StatsPlots, Measures, LaTeXStrings
 include(srcdir("Plot_utilities.jl"))
 
-fig1_a = histogram(ERC.r,
-    xlabel="ERC score",
-    ylabel="Count",
-    legend=false,
+fig1_a = histogram(ERC.fr,
+    xlabel="fERC score",
+    ylabel="Density",
+    label="Real Data",
+    c=:purple,
+    normalize=true,
     margins=4mm)
 
-fig1_b = histogram2d(ERC.r,ERC.n_edges,
-    xlabel="ERC Score",
+density!(fig1_a,ERC_sims.fr,
+    normalize=true,
+    c=:blue,
+    label="Positive Simulations")
+
+density!(fig1_a,
+    ERC_null.fr,
+    label="Null Distribution")
+
+fig1_b = histogram2d(ERC.fr,ERC.n_edges,
+    xlabel="fERC Score",
     ylabel="Shared Edges",
     margins=4mm,
     c=cgrad(:vik,scale=:log10)
 )
 
-fig1_c =  @df ERC density(:r,group={Chromosome=:same_chr},legend=:topleft,
-        xlabel="ERC Score",
+fig1_c =  @df ERC histogram(:fr,group={Chromosome=:same_chr},
+        xlabel="ERC Score",normalize=true,
         ylabel="Density")
 
 sub_ERC = ERC[findall((!ismissing).(ERC.dist)),:]
 
-fig1_d = histogram2d(sub_ERC.dist .+1,sub_ERC.r,
+fig1_d = histogram2d(sub_ERC.dist .+1,sub_ERC.fr,
                   xlabel="Pair Distance",
                   ylabel="ERC Score",
                   xscale=:log10,
@@ -286,7 +297,7 @@ using ColorSchemes
 cs = ColorSchemes.viridis
 binned_ERC.col = [get(cs,x) for x in binned_ERC.r_mean]
 
-chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,c=binned_ERC.col,legend=false,alpha=0.5,size=(1200,1200);
+chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,marker_z=binned_ERC.r_mean,markercolor=cgrad(:viridis),legend=false,alpha=0.5,size=(800,800);
            markershape=:square,markersize=1,markerstrokewidth=0,
            axis=nothing)
 
@@ -307,36 +318,62 @@ species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 #Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
 disallowmissing!(ERC_null)
-null_cdf = ecdf(ERC_null.r)
+ERC_null.fr = fisher_trans.(ERC_null.r,length(get_branch_lengths(species_tree)))
+null_cdf = ecdf(ERC_null.fr)
 
-ERC.null = null_cdf.(ERC.r)
+ERC.null = null_cdf.(ERC.fr)
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,100000,100,40,70)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=20)
+trees_null = simulate_tree_set(species_tree,40,100,40,70)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 disallowmissing!(ERC_sims)
-sim_cdf = ecdf(ERC_sims.r)
+ERC_sims.fr = fisher_trans.(ERC_sims.r,ERC_sims.n_edges)
+sim_cdf = ecdf(ERC_sims.fr)
 
-ERC.sims = sim_cdf.(ERC.r)
+ERC.sims = sim_cdf.(ERC.fr)
 
 #Take only edges outside of expectation from coalescent sims.
-gt_sim = findall(ERC.sims .> 0.95)
+gt_sim = findall(ERC.sims .> 0.75)
 #Bonferroni corrected pvalues to get significant edges on the resulting data.
 sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
 
 CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
 
 #Annotate the gene table.
+idx = [union(findall(ERC.i==x),findall(ERC.j==x)) for x in gene_table.gene]
 gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
-gene_table.mean_r = [mean(ERC.r[union(findall(ERC.i.==x),findall(ERC.j.==x))]) for x in gene_table.gene]
+gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
+gene_table.mean_fr = [mean(ERC.fr[union(findall(ERC.i.==x),findall(ERC.j.==x))]) for x in gene_table.gene]
 
+CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
 
-l = @layout [
-    a{0.2 w} [b
-              c{0.2h}]
-]
+l = @layout [a{0.2w,0.8h} b{0.8w,0.8h}
+             _ d{0.8w,0.2h}]
 
-gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
-mean_plot = scatter()
+gene_pos = chr_order_pos((gene_table.pos_1.+gene_table.pos_2)./2,gene_table.chr,chr_order,chr_lengths)
+
+mean_ERC = scatter(gene_pos,gene_table.mean_r,
+           legend=false,
+           ylabel="ERC",
+           marker_z=gene_table.mean_r,
+           c=cgrad(:viridis),
+           marings=4mm,xticks=false,permute=(:x,:y);
+           markerstrokewidth=0,
+           markersize=2)
+
+sig_int_plot = scatter(gene_pos,gene_table.sig_ints .+1,
+           legend=false,
+           ylabel="Significant Interactions",
+           marker_z=gene_table.sig_ints,
+           marings=4mm,xticks=false,yscale=:log10,
+           yticks=([1,2,11,101,1001],["0","1","10","100","1000"]),
+           markercolor=cgrad(["black","red","orange","yellow"],scale=:log10);
+           markerstrokewidth=0,
+           markersize=2)
+
+full_chr = plot(mean_ERC,chr_plot,sig_int_plot;layout=l)
+savefig(full_chr,data_dir*focal*"_fig2.png")
+savefig(full_chr,data_dir*focal*"_fig2.pdf")
+
 ```
 
 ## Plotting significant edges
@@ -371,15 +408,9 @@ We next detect communities of genes based on co-evolutionary interactions. We us
 Here, we first output the graph as a .gml file, which can then be used in the R script for Louvain clustering and in the python script for wGHAC clustering.
 
 ```{julia}
-using Graphs, SimpleWeightedGraphs
 
 
 
-```
-
-Now for Louvain clustering and cluster visualization we turn to R
-
-```{r}
 
 ```
 
