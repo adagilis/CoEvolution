@@ -184,7 +184,7 @@ null_cdf = ecdf(ERC_null.fERC)
 
 ERC.null = null_cdf.(ERC.fERC)
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,40,1000,40,70)
+trees_null = simulate_tree_set(species_tree,40,500,40,73)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 disallowmissing!(ERC_sims)
 sim_cdf = ecdf(ERC_sims.fERC)
@@ -206,7 +206,7 @@ We start by looking at the broad set of ERC scores. How do they compare to some 
 gene_table = CSV.read(data_dir*focal*"_gene_table.csv",DataFrame)
 using Arrow
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
-ERC = ERC[findall(isfinite.(ERC.r)),:]
+ERC = ERC[findall(isfinite.(ERC.fERC)),:]
 
 id_i = indexin(ERC.i,gene_table.gene)
 id_j = indexin(ERC.j,gene_table.gene)
@@ -232,16 +232,17 @@ Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
 Now we generate some basic summary plots for the data:
 
 ```{julia}
-
+#| label: fig1
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
-
 
 using CairoMakie, LaTeXStrings
 include(srcdir("Plot_utilities.jl"))
+isdir(data_dir*"plots") || mkdir(data_dir*"plots")
+plot_prefix=data_dir*"plots/"*focal*"_"
 
-fig1 = Figure(1200,1200)
+fig1 = Figure(size=(800,800))
 ax1 = Axis(fig1[1,1],
-    xlabel="fERC score",
+    xlabel="ERC score",
     ylabel="Density",
     xgridvisible=false,
     ygridvisible=false)
@@ -257,32 +258,32 @@ hist!(ax1,ERC_null.fERC,bins=100,
 hist!(ax1,ERC.fERC,bins=200,
     label="Real Data",normalization=:pdf,
        strokecolor=:blue,color=(:blue,0.5))
-xlims!(ax1,(-5,12.5))
+xlims!(ax1,(-5,15))
 
 axislegend(ax1,merge=true,unique=true)
 
 ax, hm = hexbin(fig1[1,2],ERC.fERC,ERC.n_edges,
     colormap=[Makie.to_color(:transparent);Makie.to_colormap(:viridis)],
     axis= (; xgridvisible=false,ygridvisible=false,
-             xlabel="fERC",ylabel="Shared Edges"),
+             xlabel="ERC",ylabel="Shared Edges"),
     colorscale=Makie.pseudolog10,
     bins=(50,50),
-    threshold=0)
+    threshold=2)
 Colorbar(fig1[1,2][1,2],hm,ticks=[1,10,100,1000,10000,100000,1000000])
 
-ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["Same","Different"]),xlabel="fERC",ylabel="Pair on _ chromosomes")
+ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["Same","Different"]),xlabel="ERC",ylabel="Pair on _ chromosomes")
 
 sferc = [ERC.fERC[findall(ERC.same_chr.=="same")],ERC.fERC[findall(ERC.same_chr.=="different")]]
 for i in 1:2
-    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,10],
+    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],
     strokecolor=:black,strokewidth=1)
     translate!(d,0,0,-0.1i)
 end
-xlims!(ax2,(-5,10))
+xlims!(ax2,(-5,15))
 
-sub_ERC = ERC[findall((!ismissing).(ERC.dist)),:]
+sub_ERC = findall((!ismissing).(ERC.dist))
 
-ax,hm = hexbin(fig1[2,2],sub_ERC.dist,sub_ERC.fERC,
+ax,hm = hexbin(fig1[2,2],sub_ERC.dist[sub_ERC],sub_ERC.fERC[sub_ERC],
            colorscale=Makie.pseudolog10,
            bins=(50,50),
            axis=(; xlabel="Pair Distance (bp)",
@@ -292,8 +293,7 @@ ax,hm = hexbin(fig1[2,2],sub_ERC.dist,sub_ERC.fERC,
                   xgridvisible=false,ygridvisible=false))
 Colorbar(fig1[2,2][1,2],hm,ticks=[1,100,1000,10000,100000,1000000])
 
-savefig(fig1,data_dir*focal*"_Fig1.pdf")
-
+save(plot_prefix*"fig1.pdf",fig1)
 ```
 
 ### Chromosome plot
