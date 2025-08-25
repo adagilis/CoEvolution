@@ -271,11 +271,11 @@ ax, hm = hexbin(fig1[1,2],ERC.fERC,ERC.n_edges,
     threshold=2)
 Colorbar(fig1[1,2][1,2],hm,ticks=[1,10,100,1000,10000,100000,1000000])
 
-ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["Same","Different"]),xlabel="ERC",ylabel="Pair on _ chromosomes")
+ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["",""]),xlabel="ERC",ylabel="Pair on _ chromosomes")
 
 sferc = [ERC.fERC[findall(ERC.same_chr.=="same")],ERC.fERC[findall(ERC.same_chr.=="different")]]
 for i in 1:2
-    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],
+    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],label=["Same","Different"][i]
     strokecolor=:black,strokewidth=1)
     translate!(d,0,0,-0.1i)
 end
@@ -283,7 +283,7 @@ xlims!(ax2,(-5,15))
 
 sub_ERC = findall((!ismissing).(ERC.dist))
 
-ax,hm = hexbin(fig1[2,2],sub_ERC.dist[sub_ERC],sub_ERC.fERC[sub_ERC],
+ax,hm = hexbin(fig1[2,2],ERC.dist[sub_ERC],ERC.fERC[sub_ERC],
            colorscale=Makie.pseudolog10,
            bins=(50,50),
            axis=(; xlabel="Pair Distance (bp)",
@@ -303,7 +303,7 @@ Julia has no good backend for this (well, neither does R), but I want to plot ea
 Need to have the order of genes consistent between x and y, while accounting for different chromosomes. We'll make dummy X and Y coords here, with the order: 2L,2R,3L,3R,4,X,Y,MT
 
 ```{julia}
-
+#Pre-compute a bunch of locations/bins
 pos_i = (ERC.pos_i_1 .+ ERC.pos_i_2)./2
 pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
 
@@ -326,28 +326,44 @@ wnd_size=100000
 
 binned_ERC = binned_mean(DataFrame(p1=pos_map1,p2=pos_map2,r=ERC.r),wnd_size,wnd_size)
 
-using ColorSchemes
-cs = ColorSchemes.viridis
-binned_ERC.col = [get(cs,x) for x in binned_ERC.r_mean]
+#Now locations of significant interactions
+pos_i = (sig_ERC.pos_i_1 .+ sig_ERC.pos_i_2)./2
+pos_j = (sig_ERC.pos_j_1 .+ sig_ERC.pos_j_2)./2
+
+pos_i = chr_order_pos(pos_i,sig_ERC.chr_i,chr_order,chr_lengths)
+pos_j = chr_order_pos(pos_j,sig_ERC.chr_j,chr_order,chr_lengths)
+
+#Only plot lower triangle
+pos_map2= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+pos_map1= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
+
+
+gene_pos = chr_order_pos((gene_table.pos_1.+gene_table.pos_2)./2,gene_table.chr,chr_order,chr_lengths)
+
+# And the actual plotting
 
 fig2 = Figure()
+
 #Mean gene fERC plot
-ax1 = Axis(f[1,1],xlabel="fERC",ylabel="Position",yticks=[],xgridvisible=false,ytickvisible=false,yticks=chr_lines)
+ax1 = Axis(fig2[1,1],xlabel="fERC",ylabel="Position",yticks=chr_lines)
 
 #Genome-wide interaction plot
-ax2 = Axis(f[1,2],xlabel="fERC",ylabel="Position",yticks=[],xgridvisible=false,ygridvisible=false)
+ax2 = Axis(fig2[1,2],xlabel="",ylabel="",yticks=chr_lines,xticks=chr_lines,xticklabelsvisible=false,yticklabelsvisible=false,)
+heatmap!(ax2,binned_ERC.x_bin,binned_ERC.y_bin,binned_ERC.r_mean)
+scatter!(ax2,pos_map1,pos_map2,color=:red,markersize=1)
+
 
 
 #Significant interaction plot
-ax3 = Axis(f[2,1])
+ax3 = Axis(fig2[2,2],xlabel="Position",ylabel="Degree",xticks=chr_lines)
+scatter!(ax3,gene_pos,gene_table.sig_ints,color=gene_table.sig_ints)
 
 
-chr_plot = scatter(binned_ERC.x_bin,binned_ERC.y_bin,marker_z=binned_ERC.r_mean,markercolor=cgrad(:viridis),legend=false,alpha=0.5,size=(800,800);
-           markershape=:square,markersize=1,markerstrokewidth=0,
-           axis=nothing)
+#Resize for emphasis on interaction plot
+rowsize!(fig2.layout,2,Auto(0.2))
+colsize!(fig2.layout,1,Auto(0.2))
 
-
-savefig(chr_plot,data_dir*focal*"_chr_fig.png")
+save(plot_prefix*"fig2.pdf",fig2)
 
 ```
 
@@ -400,15 +416,6 @@ We next plot the significant edges
 
 ```{julia}
 
-pos_i = (sig_ERC.pos_i_1 .+ sig_ERC.pos_i_2)./2
-pos_j = (sig_ERC.pos_j_1 .+ sig_ERC.pos_j_2)./2
-
-pos_i = chr_order_pos(pos_i,sig_ERC.chr_i,chr_order,chr_lengths)
-pos_j = chr_order_pos(pos_j,sig_ERC.chr_j,chr_order,chr_lengths)
-
-#Only plot lower triangle
-pos_map2= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
-pos_map1= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
 
 scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
 
