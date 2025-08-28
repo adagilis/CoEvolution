@@ -275,11 +275,12 @@ ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["",""]),xlabel="ERC",ylabel="Pair on _ 
 
 sferc = [ERC.fERC[findall(ERC.same_chr.=="same")],ERC.fERC[findall(ERC.same_chr.=="different")]]
 for i in 1:2
-    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],label=["Same","Different"][i]
+    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],label=["Same","Different"][i],
     strokecolor=:black,strokewidth=1)
     translate!(d,0,0,-0.1i)
 end
 xlims!(ax2,(-5,15))
+
 
 sub_ERC = findall((!ismissing).(ERC.dist))
 
@@ -345,7 +346,14 @@ gene_pos = chr_order_pos((gene_table.pos_1.+gene_table.pos_2)./2,gene_table.chr,
 fig2 = Figure()
 
 #Mean gene fERC plot
-ax1 = Axis(fig2[1,1],xlabel="fERC",ylabel="Position",yticks=chr_lines)
+ax1 = Axis(fig2[1,1],xlabel="fERC",ylabel="Position",
+    yticks=chr_lines;yticklabelsvisible=false)
+scatter!(ax1,gene_table.mean_fERC,gene_pos,color=gene_table.sig_ints,markersize=3)
+loess1 = loess(gene_pos,gene_table.mean_fERC,span=0.1)
+xs=range(extrema(gene_pos)...;step=100000)
+ys = predict(loess1,xs)
+lines!(ax1,ys,xs,linewidth=8,color=:white)
+lines!(ax1,ys,xs,linewidth=4,color=:black)
 
 #Genome-wide interaction plot
 ax2 = Axis(fig2[1,2],xlabel="",ylabel="",yticks=chr_lines,xticks=chr_lines,xticklabelsvisible=false,yticklabelsvisible=false,)
@@ -355,8 +363,8 @@ scatter!(ax2,pos_map1,pos_map2,color=:red,markersize=1)
 
 
 #Significant interaction plot
-ax3 = Axis(fig2[2,2],xlabel="Position",ylabel="Degree",xticks=chr_lines)
-scatter!(ax3,gene_pos,gene_table.sig_ints,color=gene_table.sig_ints)
+ax3 = Axis(fig2[2,2],xlabel="Position",ylabel="Degree",xticks=chr_lines;xticklabelsvisible=false,yscale=Makie.pseudolog10,yticks=[1,10,100,1000])
+scatter!(ax3,gene_pos,gene_table.sig_ints,color=gene_table.sig_ints,markersize=2)
 
 
 #Resize for emphasis on interaction plot
@@ -375,38 +383,14 @@ save(plot_prefix*"fig2.pdf",fig2)
 
 
 #Annotate the gene table.
-function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);done
+function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);end
 idx = map(indexInERC,gene_table.gene)
 gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
 gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
-gene_table.mean_fERC = [mean(ERC.fr[idx[i]]) for i in 1:length(idx)]
+gene_table.mean_fERC = [mean(ERC.fERC[idx[i]]) for i in 1:length(idx)]
 
 CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
-    
-gene_pos = chr_order_pos((gene_table.pos_1.+gene_table.pos_2)./2,gene_table.chr,chr_order,chr_lengths)
 
-mean_ERC = scatter(gene_pos,gene_table.mean_r,
-           legend=false,
-           ylabel="ERC",
-           marker_z=gene_table.mean_r,
-           c=cgrad(:viridis),
-           marings=4mm,xticks=false,permute=(:x,:y);
-           markerstrokewidth=0,
-           markersize=2)
-
-sig_int_plot = scatter(gene_pos,gene_table.sig_ints .+1,
-           legend=false,
-           ylabel="Significant Interactions",
-           marker_z=gene_table.sig_ints,
-           marings=4mm,xticks=false,yscale=:log10,
-           yticks=([1,2,11,101,1001],["0","1","10","100","1000"]),
-           markercolor=cgrad(["black","red","orange","yellow"],scale=:log10);
-           markerstrokewidth=0,
-           markersize=2)
-
-full_chr = plot(mean_ERC,chr_plot,sig_int_plot;layout=l)
-savefig(full_chr,data_dir*focal*"_fig2.png")
-savefig(full_chr,data_dir*focal*"_fig2.pdf")
 
 ```
 
