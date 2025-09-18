@@ -62,7 +62,7 @@ You can prepare the data in one of two ways. First, you can define the taxon of 
 
 ```{julia}
 #SKIP THIS IF YOU ARE USING YOUR OWN DATA!
-include srcdir("Finding_orthologs.jl")
+include(srcdir("Finding_orthologs.jl"))
 isdir(data_dir) || mkdir(data_dir)
 download_and_prep_sequences(taxon)
 download_and_prep_sequences(outgroup_ncbi_id;level=scaffold)
@@ -160,8 +160,12 @@ for g in 1:length(genes)
         gene_table.chr[g] = subtable.Column1[1]
         gene_table.pos_1[g] = minimum(subtable.Column4)
         gene_table.pos_2[g] = maximum(subtable.Column5)
+        gene_table.num_rbh[g] = length(getleafnames(read_tree(data_dir*trees*gene_table.chr[g]*".treefile")))
     end
 end
+
+#Flybase annotate, add Flybase name
+
 
 CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
@@ -440,19 +444,14 @@ We next detect communities of genes based on co-evolutionary interactions. We us
 Here, we first output the graph as a .gml file, which can then be used in the R script for Louvain clustering and in the python script for wGHAC clustering.
 
 ```{julia}
-using Graphs, SimpleWeightedGraphs, GraphIO, SGtSNEpi
+sig_ERC = CSV.read(data_dir*focal*"_sig_ints.tsv",delim=",",DataFrame)
+
+comms = CSV.read(data_dir*focal*"_communities.txt",DataFrame)
+L = collect(comms.community)
+L[findall(L.>4)] .= 5
 include(srcdir("Graphs_utilities.jl"))
+g = construct_ERC_graph(sig_ERC)
 
-graph = construct_ERC_graph(sig_ERC)
-
-node_IDs = Dict(1:length(unique(union(sig_ERC.i,sig_ERC.j))) .=> sort(unique(union(sig_ERC.i,sig_ERC.j))))
-
-savegraph(datadir*focal*"_graphs.gml",graph,GraphIO.GML.GMLFormat())
-
-#Note: we ignore weights in the Louvain calculation.
-communities = Louvain_cluster(graph)
-
-Y = sgtsnepi(graph)
 
 
 ```
@@ -465,7 +464,22 @@ Finally, we can generate the clusters using wGHAC, only implementation is curren
 
 ## GO analysis
 
-The resulting communities are examined for GO category enrichment. The easiest approach here is to use `GOst`, which has a nice implementation in R, so once again we'll step out of Julia for a bit. (But isn't quarto great in that it deals with all three nicely! Thanks Quarto team!)
+The resulting communities are examined for GO category enrichment. The easiest approach here is to use `gprofiler2`, which has a nice implementation in R, so once again we'll step out of Julia for a bit, using `RCall` to make the calls from inside julia. You will need `R` and `gprofiler2` installed for this to work. Alternatively, you can run the analysis in `R`, but it will require some data transfer
+
+```{julia}
+
+using RCall
+@rimport gprofiler2
+background = gene_table.gene
+#Three major clusters
+c1 = comms.gene[findall(comms.community .== 1)]
+c2 = comms.gene[findall(comms.community .== 2)]
+c3 = comms.gene[findall(comms.community .== 3)]
+res1 = gost(c1,organism="dmelanogaster",custom_bg=background)
+res2 = gost(c2,organism="dmelanogaster",custom_bg=background)
+res3 = gost(c3,organism="dmelanogaster",custom_bg=background)
+
+```
 
 ## Expression analysis
 
@@ -495,7 +509,7 @@ string_db = string_db[idx,:]
 string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
 
 
-joint_tab = innerjoin(ERC,string_db,on=:gid)
+joint_tab = innerjoin(sig_ERC,string_db,on=:gid)
 ```
 
 ## Introgression
