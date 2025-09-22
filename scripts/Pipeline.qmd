@@ -1,6 +1,12 @@
 ---
 title: "Pipeline example"
 format: html
+engine: julia
+execute:
+    echo: true
+    eval: false
+julia: 
+    exeflags: ["--project=../CoEvolution"]
 ---
 
 # Introduction
@@ -43,6 +49,9 @@ Hopefully Julia is up and running at this point, so we can begin on the main ste
 The below codeblock is where you can define the major parameters for the pipeline (taxon, focal species, outgroup, directory). The nature of this pipeline means it might be a good idea to just have these in the `Project.toml` file, but I know people will be more afraid of editing a file they can't see versus running code-blocks in a somewhat familiar interface.
 
 ```{julia}
+#| label: initialization
+#| echo: true
+
 using DrWatson
 @quickactivate "CoEvolution"
 
@@ -54,6 +63,8 @@ focal= "D_melanogaster"
 #Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
 outgroup_ncbi_id = "Ctenocephalides felis"
 outgroup_name = "C_felis"
+include(srcdir("Stats_utilities.jl"))
+include(srcdir("Phylo_utilities.jl"))
 ```
 
 # Prep data
@@ -61,6 +72,8 @@ outgroup_name = "C_felis"
 You can prepare the data in one of two ways. First, you can define the taxon of interest in the code block below and download data using our internal script. This will poll the NCBI `datasets` database to find any annotated, chromosome level assemblies within the taxon specified, download their protein sequences and gff files and place them in the data directory in the `seqs` folder.
 
 ```{julia}
+#| label: data download
+#| 
 #SKIP THIS IF YOU ARE USING YOUR OWN DATA!
 include(srcdir("Finding_orthologs.jl"))
 isdir(data_dir) || mkdir(data_dir)
@@ -73,11 +86,13 @@ download_and_prep_sequences(outgroup_ncbi_id;level=scaffold)
 We first identify orthologous sequences for all genes within the focal species. This is done in the following code block, most functions are defined in the `src\Finding_orthologs.jl` script. Fill out parameters in the blanks below to point to the correct files.
 
 ```{julia}
+#| label: import ERC and Ortholog functions
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 ```
 
 ```{julia}
+#| label: find orthologs
 #Now run the below, and go off to grab some tea, or take a break for the day.
 species = replace.(filter(endswith(".faa"),readdir(data_dir*"seqs/")),r".faa"=>"")
 all_orthologs = find_orths(focal,species,data_dir)
@@ -119,6 +134,7 @@ If you are using your own trees, start here!
 You will need two specify the species tree and the list of trees to compare.
 
 ```{julia}
+#| label: ERC calculations
 #Change if using some other species tree.
 species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
@@ -143,6 +159,7 @@ We next build a table that includes all of the gene information. This is based o
 The chr_dict is just a quick conversion from NCBIs chr ids to something human readable - you'll have to make your own for your system. Note, we drop anything that's on an unmapped scaffold in the process, in our case 6 genes. If you have hundreds of chromosomes/scaffolds, this step can be skipped, or you can use `Julia`s ability to make Dicts iteratively.
 
 ```{julia}
+#| label: gene_table import
 using CSV
 gff_table = CSV.read(data_dir*focal*"_genes.gff",DataFrame,header=false,skipto=9)
 gff_table = gff_table[completecases(gff_table),:]
