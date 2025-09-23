@@ -136,7 +136,7 @@ You will need two specify the species tree and the list of trees to compare.
 ```{julia}
 #| label: ERC calculations
 #Change if using some other species tree.
-species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
+species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
 trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
 
 ERC = runERC_files(trees,species_tree;cutoff=5)
@@ -195,7 +195,15 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
 ```{julia}
 include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
+species_tree = read_tree(data_dir*"trees/astral_consensus.rerooted.newick")
+
+
+#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
+trees_null = simulate_tree_set(species_tree,40,500,40,73)
+ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
+disallowmissing!(ERC_sims)
+sim_cdf = ecdf(ERC_sims.fERC)
+ERC.sims = sim_cdf.(ERC.fERC)
 
 #Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
@@ -204,19 +212,14 @@ ERC_null.fERC = fisher_trans.(ERC_null.r,length(get_branch_lengths(species_tree)
 null_cdf = ecdf(ERC_null.fERC)
 
 ERC.null = null_cdf.(ERC.fERC)
-#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,40,500,40,73)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
-disallowmissing!(ERC_sims)
-sim_cdf = ecdf(ERC_sims.fERC)
-ERC.sims = sim_cdf.(ERC.fERC)
+
 
 #Take only edges outside of expectation from coalescent sims.
 gt_sim = findall(ERC.sims .> 0.95)
 #Bonferroni corrected pvalues to get significant edges on the resulting data.
 sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
 
-CSV.write(data_dir*focal*"_sig_ints.tsv",sig_ERC,sep="\t")
+CSV.write(data_dir*focal*"_sig_ints.csv",sig_ERC)
 ```
 
 ### Broad analysis of scores
@@ -227,7 +230,6 @@ We start by looking at the broad set of ERC scores. How do they compare to some 
 gene_table = CSV.read(data_dir*focal*"_gene_table.csv",DataFrame)
 using Arrow
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
-ERC = ERC[findall(isfinite.(ERC.fERC)),:]
 
 id_i = indexin(ERC.i,gene_table.gene)
 id_j = indexin(ERC.j,gene_table.gene)
@@ -263,7 +265,7 @@ plot_prefix=data_dir*"plots/"*focal*"_"
 
 fig1 = Figure(size=(800,800))
 ax1 = Axis(fig1[1,1],
-    xlabel="ERC score",
+    xlabel="fERC score",
     ylabel="Density",
     xgridvisible=false,
     ygridvisible=false)
@@ -286,13 +288,13 @@ axislegend(ax1,merge=true,unique=true)
 ax, hm = hexbin(fig1[1,2],ERC.fERC,ERC.n_edges,
     colormap=[Makie.to_color(:transparent);Makie.to_colormap(:viridis)],
     axis= (; xgridvisible=false,ygridvisible=false,
-             xlabel="ERC",ylabel="Shared Edges"),
+             xlabel="fERC",ylabel="Shared Edges"),
     colorscale=Makie.pseudolog10,
     bins=(50,50),
     threshold=2)
-Colorbar(fig1[1,2][1,2],hm,ticks=[1,10,100,1000,10000,100000,1000000])
+Colorbar(fig1[1,2][1,2],hm,ticks=[10,100,1000,10000,100000,1000000])
 
-ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["",""]),xlabel="ERC",ylabel="Pair on _ chromosomes")
+ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["",""]),xlabel="fERC",ylabel="Pair on _ chromosomes")
 
 sferc = [ERC.fERC[findall(ERC.same_chr.=="same")],ERC.fERC[findall(ERC.same_chr.=="different")]]
 for i in 1:2
@@ -301,7 +303,9 @@ for i in 1:2
     translate!(d,0,0,-0.1i)
 end
 xlims!(ax2,(-5,15))
-
+annotation!(ax2,[(1,1/4),(1,1/2)],text=["Same","Different"],
+    textcolor=:white,
+    fontsize=20)
 
 sub_ERC = findall((!ismissing).(ERC.dist))
 
@@ -309,11 +313,19 @@ ax,hm = hexbin(fig1[2,2],ERC.dist[sub_ERC],ERC.fERC[sub_ERC],
            colorscale=Makie.pseudolog10,
            bins=(50,50),
            axis=(; xlabel="Pair Distance (bp)",
-                  ylabel="ERC Score",
+                  ylabel="fERC Score",
                   xscale=Makie.pseudolog10,
                   xticks=([0,10,1000,100000,10000000],[L"0",L"10",L"10^3",L"10^5",L"10^7"]),
                   xgridvisible=false,ygridvisible=false))
-Colorbar(fig1[2,2][1,2],hm,ticks=[1,100,1000,10000,100000,1000000])
+Colorbar(fig1[2,2][1,2],hm,ticks=[10,100,1000,10000,100000,1000000])
+
+for (label,layout) in zip(["A","B","C","D"],[fig1[1,1],fig1[1,2],fig1[2,1],fig1[2,2]])
+    Label(layout[1,1,TopLeft()],label,
+        fontsize=26,
+        font=:bold,
+        padding=(0,5,5,0),
+        halign=:right)
+end
 
 save(plot_prefix*"fig1.pdf",fig1)
 ```
@@ -342,7 +354,7 @@ pos_j = chr_order_pos(pos_j,ERC.chr_j,chr_order,chr_lengths)
 pos_map1= [minimum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
 pos_map2= [maximum([pos_i[x],pos_j[x]]) for x in 1:length(pos_i)]
 
-#We don't actually want to plot 80 million points, instead we summarize into bins.a
+#We don't actually want to plot 80 million points, instead we summarize into bins
 
 wnd_size=100000
 
@@ -387,10 +399,17 @@ scatter!(ax2,pos_map1,pos_map2,color=:red,markersize=1)
 ax3 = Axis(fig2[2,2],xlabel="Position",ylabel="Degree",xticks=chr_lines;xticklabelsvisible=false,yscale=Makie.pseudolog10,yticks=[1,10,100,1000])
 scatter!(ax3,gene_pos,gene_table.sig_ints,color=gene_table.sig_ints,markersize=2)
 
-
 #Resize for emphasis on interaction plot
 rowsize!(fig2.layout,2,Auto(0.2))
 colsize!(fig2.layout,1,Auto(0.2))
+
+#Add labels to chromosomes on triangle plot
+chr_label_pos = map(i-> (i,1000000), vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 1:7]))
+
+
+for (chr_place,chr_label) in zip(chr_label_pos,chr_order)
+    annotation!(ax3,chr_place,chr_label)
+end
 
 save(plot_prefix*"fig2.pdf",fig2)
 
@@ -440,45 +459,44 @@ mean_plot = scatter()
 
 ## Community detection
 
-We next detect communities of genes based on co-evolutionary interactions. We use the Louvain clustering approach, which tries to maximize modularity within each community (e.g. how dense interactions are within each community versus out of it). Several other approaches may be favorable (Louvain, for instance, does not allow a single gene to belong to multiple communities, when in practice it probably does), but implementation is pending (see wGHAC.py in the src directory).
+We next detect communities of genes based on co-evolutionary interactions. We use the Louvain clustering approach, which tries to maximize modularity within each community (e.g. how dense interactions are within each community versus out of it). We use the Leiden algorithm approach implemented in R. We can try to get `R` and `Julia` to interoperate using `RCall`, but we've found in testing this is unreliable for some users. Please modify the location of your files in the below code.
 
-Here, we first output the graph as a .gml file, which can then be used in the R script for Louvain clustering and in the python script for wGHAC clustering.
+```{r}
+require(igraph)
+require(readr)
 
-```{julia}
-sig_ERC = CSV.read(data_dir*focal*"_sig_ints.tsv",delim=",",DataFrame)
+sig_ERC = read_csv("data/dipterans/D_melanogaster_sig_ints.csv")
+edges = c(apply(sig_ERC,1,function(x) c(x[1],x[2])))
+graph = make_graph(edges,directed=FALSE)
 
-comms = CSV.read(data_dir*focal*"_communities.txt",DataFrame)
-L = collect(comms.community)
-L[findall(L.>4)] .= 5
-include(srcdir("Graphs_utilities.jl"))
-g = construct_ERC_graph(sig_ERC)
-
-
-
+comms = cluster_leiden(graph,objective_function="modularity",n_iterations=100)
+write_tsv(data.frame(name=comms$names,community=comms$membership),file="data/dipterans/D_melanogaster_communities.tsv")
 ```
 
-Finally, we can generate the clusters using wGHAC, only implementation is currently in python, but I am writing a `Julia` one eventually...
-
-```{python}
-
-```
 
 ## GO analysis
 
 The resulting communities are examined for GO category enrichment. The easiest approach here is to use `gprofiler2`, which has a nice implementation in R, so once again we'll step out of Julia for a bit, using `RCall` to make the calls from inside julia. You will need `R` and `gprofiler2` installed for this to work. Alternatively, you can run the analysis in `R`, but it will require some data transfer
 
-```{julia}
+```{r}
+require(gprofiler2)
+#Five major clusters
+c1 = comms$names[which(comms$membership == 1)]
+c2 = comms$names[which(comms$membership == 2)]
+c3 = comms$names[which(comms$membership == 3)]
+c4 = comms$names[which(comms$membership == 4)]
+c5 = comms$names[which(comms$membership == 5)]
+c6 = comms$names[which(comms$membership == 6)]
 
-using RCall
-@rimport gprofiler2
-background = gene_table.gene
-#Three major clusters
-c1 = comms.gene[findall(comms.community .== 1)]
-c2 = comms.gene[findall(comms.community .== 2)]
-c3 = comms.gene[findall(comms.community .== 3)]
-res1 = gost(c1,organism="dmelanogaster",custom_bg=background)
-res2 = gost(c2,organism="dmelanogaster",custom_bg=background)
-res3 = gost(c3,organism="dmelanogaster",custom_bg=background)
+genes=gsub(".treefile","",list.files("data/dipterans/trees",pattern=".treefile"))
+
+gostres = gost(list(c1=c1,c2=c2,c3=c3,c4=c4,c5=c5,c6=c6),organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
+
+#After inspection of results, we chose some top terms to highlight for export tables
+
+#Community 1
+c1_res = tibble(gostres$result[which(gostres$result$query=="c1"),])
+
 
 ```
 
@@ -511,69 +529,4 @@ string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_")
 
 
 joint_tab = innerjoin(sig_ERC,string_db,on=:gid)
-```
-
-## Introgression
-
-```{julia}
-#Output coordinate file, this will be converted to dmel5 coordinates for vcf analysis, as the vcf we use is mapped to dmel5. 
-
-coords = open(data_dir*"gene_coords.txt","a")
-
-for i in 1:length(gene_table.chr)
-    write(coords,gene_table.chr[i]*":"*string(gene_table.pos_1[i])*"-"*string(gene_table.pos_2[i])*"\n")
-end
-
-close(coords)
-
-
-include(srcdir("Introgression_functions.jl"))
-using FLoops
-using ProgressMeter
-
-vcf="/mnt/d/Projects/CoEvolution/dmel_many.vcf.gz"
-pop_file=data_dir*"pops_broadscale.txt"
-tree_file=data_dir*"tree_broadscale.txt"
-
-p=Progress(length(gene_table.gene),desc="Running Dsuite")
-@floop ThreadedEx() for gene in gene_table.gene
-    calculate_df(gene,vcf,pop_file,tree_file)
-    next!(p)
-end
-
-#Construct introgression table
-
-d_template = CSV.read(data_dir*"whole_genome_tree.txt",DataFrame)
-d_template.uid = [join(sort([x.P1,x.P2,x.P3]),"+") for x in eachrow(d_template)]
-d_stats = filter(endswith("_tree.txt"),readdir(data_dir*"introgression/",join=true))
-d_table = missings(Float64,size(d_template)[1],length(d_stats)) 
-
-for d in 1:length(d_stats)
-    tmp = CSV.read(d_stats[d],DataFrame)
-    tmp = DataFrame(replace.(eachcol(tmp),NaN=>missing),:auto)
-    tmp = tmp[completecases(tmp),:]
-    if size(tmp)[1] > 4
-        uid = [join(sort([x.x1,x.x2,x.x3]),"+") for x in eachrow(tmp)]
-        idx = indexin(uid,d_template.uid)
-        abba = tmp.x9
-        baba = tmp.x10
-        bbaa = tmp.x8
-        id2 = findall(tmp.x1 .!= d_template[idx,1])
-        df = (abba .- baba) ./ (abba .+ baba .+ bbaa)
-        df[id2] = (baba[id2] .- abba[id2]) ./ (abba[id2] .+ baba[id2] .+ bbaa[id2])
-        d_table[idx,d] = df
-    end
-end
-
-cor_mat = cor_test_matrix(d_table,2)
-
-d_names = replace.(filter(endswith("_tree.txt"),readdir(data_dir*"introgression/",join=false)),r"_tree.txt"=>s"")
-cor_mat.i = d_names[Int.(cor_mat.i)]
-cor_mat.j = d_names[Int.(cor_mat.j)]
-cor_mat.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(cor_mat)]
-rename!(cor_mat,"r"=>"int_r")
-rename!(cor_mat,"pval"=>"int_pval")
-using Arrow
-Arrow.write(data_dir*focal*"_coInt.Arrow",cor_mat){julia}
-
 ```
