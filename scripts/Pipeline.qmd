@@ -252,6 +252,22 @@ ERC.dist[intra] = [range_dist([x.pos_i_1,x.pos_i_2],[x.pos_j_1,x.pos_j_2]) for x
 Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
 ```
 
+Next, some summaries for the gene_table:
+```{julia}
+
+
+#Annotate the gene table.
+function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);end
+idx = map(indexInERC,gene_table.gene)
+gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
+gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
+gene_table.mean_fERC = [mean(ERC.fERC[idx[i]]) for i in 1:length(idx)]
+
+CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
+
+
+```
+
 Now we generate some basic summary plots for the data:
 
 ```{julia}
@@ -415,47 +431,6 @@ save(plot_prefix*"fig2.pdf",fig2)
 
 ```
 
-### Generating a "significant" set of edges
-
-### Analysis of significant edges
-
-```{julia}
-
-
-#Annotate the gene table.
-function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);end
-idx = map(indexInERC,gene_table.gene)
-gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
-gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
-gene_table.mean_fERC = [mean(ERC.fERC[idx[i]]) for i in 1:length(idx)]
-
-CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
-
-
-```
-
-## Plotting significant edges
-
-We next plot the significant edges
-
-```{julia}
-
-
-scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
-
-vline!(chr_plot,chr_lines,linecolor=:black)
-hline!(chr_plot,chr_lines,linecolor=:black)
-
-savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
-
-l = @layout [
-    a{0.2 w} [b
-              c{0.2h}]
-]
-
-gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
-mean_plot = scatter()
-```
 
 ## Community detection
 
@@ -503,6 +478,11 @@ c1_res = tibble(gostres$result[which(gostres$result$query=="c1"),])
 ## Expression analysis
 
 ### Tissue
+
+```{julia}
+
+
+```
 
 ### Timing
 
