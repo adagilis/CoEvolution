@@ -108,12 +108,12 @@ end
 """
     run_astral(trees) -> ASTRAL4 consensus tree
 """
-function run_astral(trees)
+function run_astral(trees;name="astral_consensus.newick")
     treefile=data_dir*"trees/concat_trees.tre"
     for t in trees
         run(pipeline(`cat $t`),stdout=treefile,append=true)
     end
-    run(`astral4 -i $treefile -o $data_dir/trees/astral_consensus.newick --root $outgroup`)
+    run(`astral4 -i $treefile -o $data_dir/trees/$name --root $outgroup`)
     run(`rm $treefile`)
 end
 

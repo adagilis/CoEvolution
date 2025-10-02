@@ -99,19 +99,23 @@ end
 
 function runERC_collection(trees,species_tree;cutoff=5)
     num_comp = binomial(length(trees),2)
+    total = collect(1:num_comp)
+    local ERC_res=DataFrame(missings(Float64,num_comp,7),[:i,:j,:n_edges,:r,:fERC,:pval,:shared_tips])
+    ERC_res.i = reduce(vcat,[repeat([x],inner=length(trees)-x) for x in 1:length(trees)])
+    ERC_res.j = reduce(vcat,[collect(x:length(trees)) for x in 2:length(trees)])
     p = Progress(num_comp,desc="Calculating ERC scores:")
-    local ERC_res=DataFrame(zeros(num_comp,7),[:i,:j,:n_edges,:r,:fERC,:pval,:shared_tips])
-    @floop ThreadedEx() for (i,j) in Iterators.product(1:(length(trees)-1),1:length(trees))
-        if(j>i)
-            index = index_func(i,j,length(trees))
-            try
-                ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=cutoff)
-            catch
-                #println("ERC failed to calculate for $(i), $(j)")
-                ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=> missing,:pval => missing,:shared_tips=>missing)
-            end
-            next!(p)
+@floop ThreadedEx() for index in total
+        i = ERC_res.i[index]
+        j = ERC_res.j[index]
+        ti = trees[i]
+        tj = trees[j]
+        try
+            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
+        catch
+            #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
+            ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing,:shared_tips=>missing)
         end
+        next!(p)
     end
     return(ERC_res) 
 end

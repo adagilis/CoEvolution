@@ -56,7 +56,7 @@ using DrWatson
 @quickactivate "CoEvolution"
 
 #Set these values for your own analysis. Taxon can be given as plain-text, but use ncbi taxon ids when possible.
-taxon = "Dipterans"
+taxon = "Diptera"
 data_dir = datadir("dipterans/") #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
 #Specify the focal species for the analysis.
 focal= "D_melanogaster"
@@ -78,7 +78,7 @@ You can prepare the data in one of two ways. First, you can define the taxon of 
 include(srcdir("Finding_orthologs.jl"))
 isdir(data_dir) || mkdir(data_dir)
 download_and_prep_sequences(taxon)
-download_and_prep_sequences(outgroup_ncbi_id;level=scaffold)
+download_and_prep_sequences(outgroup_ncbi_id;level="scaffold")
 ```
 
 # Finding orthologs for focal species.
@@ -169,15 +169,15 @@ chr_dict = Dict("NC_004354.4"=>"X","NT_033779.5"=>"2L","NT_033778.4"=>"2R","NT_0
 gff_table.Column1 = [get(chr_dict,c,"NA") for c in gff_table.Column1]
 
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
+gene_table = DataFrame(gene=genes,chr=missings(String,length(genes)),pos_1=missings(Int64,length(genes)),pos_2=missings(Int64,length(genes)),num_rbh=missings(Int64,length(genes)))
 
-gene_table = DataFrame(gene=genes,chr="NA",pos_1=0,pos_2=0)
 for g in 1:length(genes)
     subtable = gff_table[findall(occursin.(genes[g],gff_table.Column9)),:]
     if size(subtable)[1] > 0
         gene_table.chr[g] = subtable.Column1[1]
         gene_table.pos_1[g] = minimum(subtable.Column4)
         gene_table.pos_2[g] = maximum(subtable.Column5)
-        gene_table.num_rbh[g] = length(getleafnames(read_tree(data_dir*trees*gene_table.chr[g]*".treefile")))
+        gene_table.num_rbh[g] = length(getleafnames(read_tree(data_dir*"trees/"*gene_table.gene[g]*".treefile")))
     end
 end
 
@@ -195,15 +195,27 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
 ```{julia}
 include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*"trees/astral_consensus.rerooted.newick")
+species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
 
 
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,40,500,40,73)
+trees_null = simulate_tree_set(species_tree,40,1000,4,73,focal)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
+ERC_sims = ERC_sims[completecases(ERC_sims),:]
 disallowmissing!(ERC_sims)
-sim_cdf = ecdf(ERC_sims.fERC)
-ERC.sims = sim_cdf.(ERC.fERC)
+#Narrow to significant correlations (these are the magnitudes we actually care about)
+sub_ERC_sims = ERC_sims[findall(ERC_sims.pval .< 0.05/length(ERC_sims.r)),:]
+#Create a cut-off per number of shared edges - more heteroskedasticity when shared edges low
+function dynamic_quantile(ERC,n_shared;q=0.95)
+    vec = ERC.fERC[findall(ERC.n_edges .== n_shared)]
+    if length(vec)>1
+        return(quantile(vec,q))
+    else
+        return(Inf)
+    end
+end
+sim_cutoff_shared = [dynamic_quantile(sub_ERC_sims,x) for x in 3:73]
+ERC.sims = [x.fERC > sim_cutoff_shared[Int(x.shared_tips)-2]  for x in eachrow(ERC)]
 
 #Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
@@ -214,10 +226,10 @@ null_cdf = ecdf(ERC_null.fERC)
 ERC.null = null_cdf.(ERC.fERC)
 
 
-#Take only edges outside of expectation from coalescent sims.
-gt_sim = findall(ERC.sims .> 0.95)
-#Bonferroni corrected pvalues to get significant edges on the resulting data.
-sig_ERC = ERC[gt_sim[findall(ERC.pval[gt_sim] .< 0.05/length(gt_sim))],:]
+#Take only edges outside of expectation from negative sim
+gt_null = findall(ERC.null .>0.95)
+#Now, edges that are Bonferonni significant _and_ beyond dynamic cut-off are retained further.
+sig_ERC = ERC[intersect(findall(ERC.sims),findall(ERC.pval .< 0.05/length(gt_null)),:]
 
 CSV.write(data_dir*focal*"_sig_ints.csv",sig_ERC)
 ```
@@ -265,8 +277,8 @@ plot_prefix=data_dir*"plots/"*focal*"_"
 
 fig1 = Figure(size=(800,800))
 ax1 = Axis(fig1[1,1],
-    xlabel="fERC score",
-    ylabel="Density",
+    xlabel="fERC",
+    ylabel="Frequency",
     xgridvisible=false,
     ygridvisible=false)
 
@@ -281,35 +293,47 @@ hist!(ax1,ERC_null.fERC,bins=100,
 hist!(ax1,ERC.fERC,bins=200,
     label="Real Data",normalization=:pdf,
        strokecolor=:blue,color=(:blue,0.5))
+vlines!(ax1,quantile(ERC_null.fERC,[0.95]),color=:orange)
+vlines!(ax1,quantile(ERC_sims.fERC,[0.95]),color=:purple)
+
 xlims!(ax1,(-5,15))
+
 
 axislegend(ax1,merge=true,unique=true)
 
-ax, hm = hexbin(fig1[1,2],ERC.fERC,ERC.n_edges,
+ax2, hm = hexbin(fig1[1,2],ERC.n_edges,ERC.fERC,
     colormap=[Makie.to_color(:transparent);Makie.to_colormap(:viridis)],
     axis= (; xgridvisible=false,ygridvisible=false,
-             xlabel="fERC",ylabel="Shared Edges"),
+             ylabel="fERC",xlabel="Shared Edges"),
     colorscale=Makie.pseudolog10,
     bins=(50,50),
     threshold=2)
+
+loess_1_2 = loess(collect(ERC.n_edges),collect(ERC.fERC),span=0.1) 
+xs = range(4,125,length=200)
+ys = predict(loess_1_2,xs)
+lines!(ax2,xs,ys,linewidth=8,color=:white)
+lines!(ax2,xs,ys,linewidth=4,color=:black)
+
+
 Colorbar(fig1[1,2][1,2],hm,ticks=[10,100,1000,10000,100000,1000000])
 
-ax2 = Axis(fig1[2,1],yticks=([0.25,0.5],["",""]),xlabel="fERC",ylabel="Pair on _ chromosomes")
+ax3 = Axis(fig1[2,1],yticks=([0.25,0.5],["",""]),xlabel="fERC",ylabel="Pair on _ chromosomes")
 
 sferc = [ERC.fERC[findall(ERC.same_chr.=="same")],ERC.fERC[findall(ERC.same_chr.=="different")]]
 for i in 1:2
-    d = density!(sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],label=["Same","Different"][i],
+    d = density!(ax3,sferc[i],offset=i./4,color=:x,colormap=:viridis,colorrange=[-5,15],label=["Same","Different"][i],
     strokecolor=:black,strokewidth=1)
     translate!(d,0,0,-0.1i)
 end
-xlims!(ax2,(-5,15))
-annotation!(ax2,[(1,1/4),(1,1/2)],text=["Same","Different"],
+xlims!(ax3,(-5,15))
+annotation!(ax3,[(1,1/4),(1,1/2)],text=["Same","Different"],
     textcolor=:white,
     fontsize=20)
 
 sub_ERC = findall((!ismissing).(ERC.dist))
 
-ax,hm = hexbin(fig1[2,2],ERC.dist[sub_ERC],ERC.fERC[sub_ERC],
+ax4,hm = hexbin(fig1[2,2],ERC.dist[sub_ERC],ERC.fERC[sub_ERC],
            colorscale=Makie.pseudolog10,
            bins=(50,50),
            axis=(; xlabel="Pair Distance (bp)",
@@ -318,6 +342,13 @@ ax,hm = hexbin(fig1[2,2],ERC.dist[sub_ERC],ERC.fERC[sub_ERC],
                   xticks=([0,10,1000,100000,10000000],[L"0",L"10",L"10^3",L"10^5",L"10^7"]),
                   xgridvisible=false,ygridvisible=false))
 Colorbar(fig1[2,2][1,2],hm,ticks=[10,100,1000,10000,100000,1000000])
+
+lm_1 = lm(@formula(fERC~dist),ERC[sub_ERC,:])
+xs = range(extrema(ERC.dist[sub_ERC])...,length=200)
+ys = predict(lm_1,DataFrame(dist=collect(xs)))
+lines!(ax4,xs,ys,linewidth=8,color=:white)
+lines!(ax4,xs,ys,linewidth=4,color=:black)
+
 
 for (label,layout) in zip(["A","B","C","D"],[fig1[1,1],fig1[1,2],fig1[2,1],fig1[2,2]])
     Label(layout[1,1,TopLeft()],label,
@@ -345,6 +376,8 @@ pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
 chr_order = ["2L","2R","3L","3R","4","X","Y","MT"]
 chr_lengths = [23312347,25254477,28012551,32067996,1271129,23107330,3666928]
 chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
+chr_label_pos = vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 2:7])
+chr_ticks = (chr_label_pos,chr_order[1:7])
 
 pos_i = chr_order_pos(pos_i,ERC.chr_i,chr_order,chr_lengths)
 pos_j = chr_order_pos(pos_j,ERC.chr_j,chr_order,chr_lengths)
@@ -380,7 +413,14 @@ fig2 = Figure()
 
 #Mean gene fERC plot
 ax1 = Axis(fig2[1,1],xlabel="fERC",ylabel="Position",
-    yticks=chr_lines;yticklabelsvisible=false)
+    yticks=chr_ticks,
+    yticksize=0,
+    yminorticks=chr_lines,
+    yminorticksvisible=true,
+    yminorgridvisible=true,
+    yminorgridcolor=RGBAf(0,0,0,0.25),
+    ygridcolor=RGBAf(0,0,0,0),
+    limits =(nothing,nothing,0,maximum(chr_lines)))
 scatter!(ax1,gene_table.mean_fERC,gene_pos,color=gene_table.sig_ints,markersize=3)
 loess1 = loess(gene_pos,gene_table.mean_fERC,span=0.1)
 xs=range(extrema(gene_pos)...;step=100000)
@@ -389,27 +429,45 @@ lines!(ax1,ys,xs,linewidth=8,color=:white)
 lines!(ax1,ys,xs,linewidth=4,color=:black)
 
 #Genome-wide interaction plot
-ax2 = Axis(fig2[1,2],xlabel="",ylabel="",yticks=chr_lines,xticks=chr_lines,xticklabelsvisible=false,yticklabelsvisible=false,)
+ax2 = Axis(fig2[1,2],xlabel="",ylabel="", 
+    yticklabelsvisible=false,
+    xticklabelsvisible=false,
+    xminorticks=chr_lines,
+    yminorticks=chr_lines,
+    xticksize=0,
+    yticksize=0,
+    xminorticksvisible=true,
+    yminorticksvisible=true,
+    yminorgridvisible=true,
+    yminorgridcolor=RGBAf(0,0,0,0.25),
+    ygridcolor=RGBAf(0,0,0,0),
+    xminorgridvisible=true,
+    xminorgridcolor=RGBAf(0,0,0,0.25),
+    xgridcolor=RGBAf(0,0,0,0)
+)
 heatmap!(ax2,binned_ERC.x_bin,binned_ERC.y_bin,binned_ERC.r_mean)
 scatter!(ax2,pos_map1,pos_map2,color=:red,markersize=1)
 
 
 
 #Significant interaction plot
-ax3 = Axis(fig2[2,2],xlabel="Position",ylabel="Degree",xticks=chr_lines;xticklabelsvisible=false,yscale=Makie.pseudolog10,yticks=[1,10,100,1000])
+ax3 = Axis(fig2[2,2],xlabel="Position",ylabel="Degree",
+    xticks=chr_ticks,
+    xticksize=0,
+    xminorticks=chr_lines,
+    xminorticksvisible=true,
+    xminorgridvisible=true,
+    xminorgridcolor=RGBAf(0,0,0,0.25),
+    xgridcolor=RGBAf(0,0,0,0),
+    yticks=[1,400,800,1200],
+    limits =(0,maximum(chr_lines),nothing,nothing))
 scatter!(ax3,gene_pos,gene_table.sig_ints,color=gene_table.sig_ints,markersize=2)
 
 #Resize for emphasis on interaction plot
 rowsize!(fig2.layout,2,Auto(0.2))
 colsize!(fig2.layout,1,Auto(0.2))
-
-#Add labels to chromosomes on triangle plot
-chr_label_pos = map(i-> (i,1000000), vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 1:7]))
-
-
-for (chr_place,chr_label) in zip(chr_label_pos,chr_order)
-    annotation!(ax3,chr_place,chr_label)
-end
+colgap!(fig2.layout,-15)
+rowgap!(fig2.layout,-15)
 
 save(plot_prefix*"fig2.pdf",fig2)
 
@@ -434,27 +492,20 @@ CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
 
 ```
 
-## Plotting significant edges
-
-We next plot the significant edges
+## Chromosome wide plots
 
 ```{julia}
 
+fig3 = Figure()
+ax1 = Axis(fig3[1,1],xlabel="Orthologs Found",ylabel="Degree",yscale=Makie.pseudolog10,yticks=[0,100,200,400,800,1200])
+scatter!(ax1,gene_table.num_rbh,gene_table.sig_ints,color=gene_table.mean_fERC)
+loess1 = loess(gene_table.num_rbh,gene_table.sig_ints,span=0.1)
+xs=range(extrema(gene_table.num_rbh)...;length=200)
+ys = predict(loess1,xs)
+lines!(ax1,xs,ys,linewidth=8,color=:white)
+lines!(ax1,xs,ys,linewidth=4,color=:black)
 
-scatter!(chr_plot,pos_map1,pos_map2,c=:red;markerstrokewidth=0,markersize=0.5)
-
-vline!(chr_plot,chr_lines,linecolor=:black)
-hline!(chr_plot,chr_lines,linecolor=:black)
-
-savefig(chr_plot,data_dir*focal*"_chr_fig.pdf")
-
-l = @layout [
-    a{0.2 w} [b
-              c{0.2h}]
-]
-
-gene_pos = chr_order_pos((gene_table.pos1.+gene_table.pos2)./2,gene_table.chr,chr_order,chr_lengths)
-mean_plot = scatter()
+ax2 = Axis(fig3[1,2],xlabel="ds with D. simulans",ylabel="Orthologs Found")
 ```
 
 ## Community detection
@@ -472,7 +523,6 @@ graph = make_graph(edges,directed=FALSE)
 comms = cluster_leiden(graph,objective_function="modularity",n_iterations=100)
 write_tsv(data.frame(name=comms$names,community=comms$membership),file="data/dipterans/D_melanogaster_communities.tsv")
 ```
-
 
 ## GO analysis
 
