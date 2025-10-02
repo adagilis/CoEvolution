@@ -5,7 +5,10 @@ using Statistics
 using HypothesisTests
 using CSV
 using ProgressMeter
+using Term
+using Term.Tables
 using Arrow
+import Term: tprint
 
 include("Phylo_utilities.jl")
 include("Stats_utilities.jl") 
@@ -19,7 +22,6 @@ Similarly, I don't perform the z-transform as done in both prior approaches beca
 
 In short - there's definitely more to develop this approach, but we're sticking to published methods here for simplicity.
 """
-
 function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
@@ -67,14 +69,16 @@ end
     runERC_files(trees,species_tree) → DataFrame{[i,j,branches,cor,p-value]}
 Calculate a set of ERC values given a list of gene trees `trees` and a species tree `species_tree`. Returns DataFrame object with five columns. 
 """
-
 function runERC_files(trees,species_tree;cutoff=5)
+    tprint("{blue}fERC score calculation:{/blue}")
+    println("Using "*string(Threads.nthreads())*" threads.")
     num_comp = binomial(length(trees),2)
+    println("Will be performing "*@green(string(num_comp))*" comparisons.")
     total = collect(1:num_comp)
     local ERC_res=DataFrame(missings(Float64,num_comp,7),[:i,:j,:n_edges,:r,:fERC,:pval,:shared_tips])
     ERC_res.i = reduce(vcat,[repeat([x],inner=length(trees)-x) for x in 1:length(trees)])
     ERC_res.j = reduce(vcat,[collect(x:length(trees)) for x in 2:length(trees)])
-    p = Progress(num_comp,desc="Calculating ERC scores:")
+    p = Progress(num_comp,desc="Calculating ERC scores:",showspeed=true)
     @floop ThreadedEx() for index in total
         i = ERC_res.i[index]
         j = ERC_res.j[index]
@@ -88,6 +92,9 @@ function runERC_files(trees,species_tree;cutoff=5)
         end
         next!(p)
     end
+    completed = length(findall(completecases(ERC_res)))
+    data_table=hcat(["Total Pairs","Completed","Insufficient Data"],[num_comp,completed,num_comp-completed])
+    println(Table(data_table;header=["Class","Number of Pairs"]))
     return(ERC_res)
 end
 
@@ -96,15 +103,18 @@ end
     runERC_collection(trees,species_tree::Phylo;cutoff=5) -> DataTable[i,j,edges_kept,r2,pval]
     calculates ERC values using the `calculate_ERC` function for all pairs of trees in the trees object.
 """
-
 function runERC_collection(trees,species_tree;cutoff=5)
+    tprint("{blue}fERC score calculation:{/blue}")
+    println("Using "*string(Threads.nthreads())*" threads.")
+    num_comp = binomial(length(trees),2)
+    println("Will be performing "*@green(string(num_comp))*" comparisons.")
     num_comp = binomial(length(trees),2)
     total = collect(1:num_comp)
     local ERC_res=DataFrame(missings(Float64,num_comp,7),[:i,:j,:n_edges,:r,:fERC,:pval,:shared_tips])
     ERC_res.i = reduce(vcat,[repeat([x],inner=length(trees)-x) for x in 1:length(trees)])
     ERC_res.j = reduce(vcat,[collect(x:length(trees)) for x in 2:length(trees)])
-    p = Progress(num_comp,desc="Calculating ERC scores:")
-@floop ThreadedEx() for index in total
+    p = Progress(num_comp,desc="Calculating ERC scores:",showspeed=true)
+    @floop ThreadedEx() for index in total
         i = ERC_res.i[index]
         j = ERC_res.j[index]
         ti = trees[i]

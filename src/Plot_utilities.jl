@@ -20,11 +20,9 @@ function graph_plot(graph,dataframe;cols=:blue,sizes=1,linealpha=0.05)
     from_y = dataframe[:,2][id_from]
     to_x = dataframe[:,1][id_to]
     to_y = dataframe[:,2][id_to]
-    df = DataFrame(:from_x=>from_x,:from_y=>from_y,:to_x=>to_x,:to_y=>to_y)
+    df = DataFrame(:from_x=>from_x,:from_y=>from_y,:to_x=>to_x,:to_y=>to_y,:weight=>weights)
     network_plot = GLMakie.linesegments(map(floc,eachrow(df)))
     #plot nodes
     GLMakie.scatter!(df[:,1],df[:,2])
     return(network_plot)
 end
-
-function floc(i);((i[1],i[3]),(i[2],i[4]));end

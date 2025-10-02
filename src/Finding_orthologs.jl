@@ -6,7 +6,6 @@ using FLoops
 """
     download_and_prep_sequences(taxon) -> sequence files in /seqs/ folder
 """
-
 function download_and_prep_sequences(taxon;level="chromosome")
     isdir(data_dir*"seqs/") || mkdir(data_dir*"seqs/")
     run(`datasets download genome taxon $taxon --assembly-level $level --dehydrated --include protein,gff3 --filename $data_dir/$taxon.zip --assembly-source "RefSeq" --mag exclude --exclude-atypical`)
@@ -34,9 +33,8 @@ end
 
 """
     diamond_blastp(db,query,path) 
-    creates a command to run a diamond blastp search between a db and query species. Assumed that path contains .faa sequences for the db and query species, generates a diamond database if one does not exist already.
+creates a command to run a diamond blastp search between a db and query species. Assumed that path contains .faa sequences for the db and query species, generates a diamond database if one does not exist already.
 """
-
 function diamond_blastp(db,query,path)
     outname = path*"blast/"*db*"_"*query*".blastp.tsv"
     dbname = path*"blast/"*db*".dmnd"
@@ -58,10 +56,8 @@ end
 
 """
     diamond_makedb(db,path) 
-    creates a command generate a diamond db. Assumed that path contains .faa sequences for the db species
+creates a command generate a diamond db. Assumed that path contains .faa sequences for the db species
 """
-
-
 function diamond_makedb(db,path)
     isdir(path*"blast/") || mkdir(path*"blast/")
     loc= path*"seqs/"*db*".faa"
@@ -82,9 +78,8 @@ end
 
 """
     rbh(species1,species2,path) -> DataFrame(:species1,:species2,:gene_species1,:gene_species2)
-    Identifies reciprocal best hits between species1 and species2, given .faa sequences in `path`. Runs diamond, returns a dataframe
+Identifies reciprocal best hits between species1 and species2, given .faa sequences in `path`. Runs diamond, returns a dataframe
 """
-
 function rbh(species1,species2,path)
     filename1 = path*"blast/"*species1*"_"*species2*".blastp.tsv"
     filename2 = path*"blast/"*species2*"_"*species1*".blastp.tsv"
@@ -106,12 +101,12 @@ end
 
 """
     find_orths(species1,path) 
-    Identifies reciprocal best hit orthologs for all genes in species1 versus all sequence files found in path.
-    Long run times since we allow diamond to take up all threads rather than parallelizing the process here.
-    Because we are not doing all to all comparisons, the run time is significantly lower than OrthoFinder, however. 
-    If you want to run this more efficiently, consider running the rbh(species1,species2,path) function across multiple machines/nodes.
+Identifies reciprocal best hit orthologs for all genes in species1 versus all sequence files found in path.
+Long run times since we allow diamond to take up all threads rather than parallelizing the process here.
+Because we are not doing all to all comparisons, the run time is significantly lower than OrthoFinder, however. 
+If you want to run this more efficiently, consider running the rbh(species1,species2,path) function across multiple machines/nodes.
+The current implementation suffers from having to vcat each result - this is slow, but we don't know a priori how mucn memory to pre-allocate.
 """
-
 function find_orths(focal,species_list,path)
     p=Progress(length(species_list)-1,desc="Running RBH comparisons")
     rbh_res = DataFrame(species1=String[],species2=String[],i=String[],j=String[])
@@ -124,10 +119,9 @@ end
 
 """
     find_orths(rbh_res,path,cutoff=4) 
-    Accepts a table that lists reciprocal best hit results and creates aligned sequence files for each set of orthologs.
-    Will not output sequences when there are fewer than `cutoff` (default=4) species with the ortholog, as these will not be useful for generating branch lengths either way.
+Accepts a table that lists reciprocal best hit results and creates aligned sequence files for each set of orthologs.
+Will not output sequences when there are fewer than `cutoff` (default=4) species with the ortholog, as these will not be useful for generating branch lengths either way.
 """
-
 function build_orth_files(rbh_res,path;cutoff=4)
     outpath=path*"aligned/"
     isdir(outpath) || mkdir(outpath)
@@ -167,14 +161,13 @@ end
 
 """
     append_seq(seq,species,species_file,file) 
-    Appends the sequence `seq` from `species` into `file`. Requires `species_file` to exist, and needs `seqkit`.
-    Appends the sequence as: 
+Appends the sequence `seq` from `species` into `file`. Requires `species_file` to exist, and needs `seqkit`.
+Appends the sequence as: 
     ```{fasta}
     >species
     Sequence
     ```
 """
-
 function append_seq(seq,species,species_file,file)
     run(pipeline(`echo ">$species"`;stdout=file,append=true))
     run(pipeline(pipeline(`seqkit grep -p "$seq" $species_file`,`grep -v "$seq"`);stdout=file,append=true))

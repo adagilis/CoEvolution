@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.6"
+julia_version = "1.11.7"
 manifest_format = "2.0"
-project_hash = "fc3c9910b80d107106f2ceaacf8cf284142bcc35"
+project_hash = "be353dfc6dc68caafc0ff60beee62e4545f78700"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -320,6 +320,12 @@ deps = ["Distances", "LinearAlgebra", "NearestNeighbors", "Printf", "Random", "S
 git-tree-sha1 = "3e22db924e2945282e70c33b75d4dde8bfa44c94"
 uuid = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
 version = "0.15.8"
+
+[[deps.CodeTracking]]
+deps = ["InteractiveUtils", "UUIDs"]
+git-tree-sha1 = "062c5e1a5bf6ada13db96a4ae4749a4c2234f521"
+uuid = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
+version = "1.3.9"
 
 [[deps.CodecLz4]]
 deps = ["Lz4_jll", "TranscodingStreams"]
@@ -848,6 +854,12 @@ git-tree-sha1 = "2eaa69a7cab70a52b9687c8bf950a5a93ec895ae"
 uuid = "076d061b-32b6-4027-95e0-9a2c6f6d7e74"
 version = "0.2.0"
 
+[[deps.Highlights]]
+deps = ["DocStringExtensions", "InteractiveUtils", "REPL"]
+git-tree-sha1 = "9e13b8d8b1367d9692a90ea4711b4278e4755c32"
+uuid = "eafb193a-b7ab-5a9e-9068-77385905fa72"
+version = "0.5.3"
+
 [[deps.Hwloc]]
 deps = ["CEnum", "Hwloc_jll", "Printf"]
 git-tree-sha1 = "6a3d80f31ff87bc94ab22a7b8ec2f263f9a6a583"
@@ -1348,6 +1360,11 @@ git-tree-sha1 = "816620e3aac93e5b5359e4fdaf23ca4525b00ddf"
 uuid = "6f286f6a-111f-5878-ab1e-185364afe411"
 version = "0.10.3"
 
+[[deps.MyterialColors]]
+git-tree-sha1 = "01d8466fb449436348999d7c6ad740f8f853a579"
+uuid = "1c23619d-4212-4747-83aa-717207fae70f"
+version = "0.3.0"
+
 [[deps.NLopt]]
 deps = ["CEnum", "NLopt_jll"]
 git-tree-sha1 = "624785b15005a0e0f4e462b27ee745dbe5941863"
@@ -1506,6 +1523,12 @@ git-tree-sha1 = "1f7f9bbd5f7a2e5a9f7d96e51c9754454ea7f60b"
 uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
 version = "1.56.4+0"
 
+[[deps.Parameters]]
+deps = ["OrderedCollections", "UnPack"]
+git-tree-sha1 = "34c0e9ad262e5f7fc75b10a9952ca7692cfc5fbe"
+uuid = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+version = "0.12.3"
+
 [[deps.ParserCombinator]]
 deps = ["AutoHashEquals", "Printf"]
 git-tree-sha1 = "5f2ab6899c7a056d475194d03393299e61a0425c"
@@ -1636,11 +1659,11 @@ version = "1.11.0"
 uuid = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
 version = "1.11.0"
 
-[[deps.ProgressBars]]
-deps = ["Printf"]
-git-tree-sha1 = "b437cdb0385ed38312d91d9c00c20f3798b30256"
-uuid = "49802e3a-d2f1-5c88-81d8-b72133a6f568"
-version = "1.5.1"
+[[deps.ProgressLogging]]
+deps = ["Logging", "SHA", "UUIDs"]
+git-tree-sha1 = "d95ed0324b0799843ac6f7a6a85e65fe4e5173f0"
+uuid = "33c8b6b6-d38a-422a-b730-caa89a2f386c"
+version = "0.1.5"
 
 [[deps.ProgressMeter]]
 deps = ["Distributed", "Printf"]
@@ -2081,6 +2104,12 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "1feb45f88d133a655e001435632f019a9a1bcdb6"
 uuid = "62fd8b95-f654-4bbd-a8a5-9c27f68ccd50"
 version = "0.1.1"
+
+[[deps.Term]]
+deps = ["AbstractTrees", "CodeTracking", "Dates", "Highlights", "InteractiveUtils", "Logging", "Markdown", "MyterialColors", "OrderedCollections", "Parameters", "PrecompileTools", "ProgressLogging", "REPL", "Tables", "UUIDs", "Unicode", "UnicodeFun"]
+git-tree-sha1 = "dec48498aa80c84704745b3c267bac32e206dac2"
+uuid = "22787eb5-b846-44ae-b979-8e399b8463ab"
+version = "2.0.7"
 
 [[deps.Test]]
 deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]

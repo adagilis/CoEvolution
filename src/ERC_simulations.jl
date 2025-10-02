@@ -18,7 +18,6 @@ Takes a species tree and simulates a bunch of trees using a random subsample of 
 The scale parameter is meant to rescale when the tree is not in coalescent units, but does not seem to work, so keep set to 1.
 
 """
-
 function simulate_tree_set(species_tree,scale,genes,min_tips,max_tips,focal)
     tips = rand(min_tips:max_tips,genes)
     gene_trees = [simulate_subsampled_tree(species_tree,tips[i],scale,focal) for i in 1:genes]
