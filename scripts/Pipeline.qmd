@@ -56,7 +56,7 @@ using DrWatson
 @quickactivate "CoEvolution"
 
 #Set these values for your own analysis. Taxon can be given as plain-text, but use ncbi taxon ids when possible.
-taxon = "Dipterans"
+taxon = "Diptera"
 data_dir = datadir("dipterans/") #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
 #Specify the focal species for the analysis.
 focal= "D_melanogaster"
@@ -361,6 +361,10 @@ pos_j = (ERC.pos_j_1 .+ ERC.pos_j_2)./2
 chr_order = ["2L","2R","3L","3R","4","X","Y","MT"]
 chr_lengths = [23312347,25254477,28012551,32067996,1271129,23107330,3666928]
 chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
+chr_label_pos = map(i-> (i,1000000), vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 2:7]))
+
+custom_ticks = (chr_label_pos,chr_order)
+
 
 pos_i = chr_order_pos(pos_i,ERC.chr_i,chr_order,chr_lengths)
 pos_j = chr_order_pos(pos_j,ERC.chr_j,chr_order,chr_lengths)
@@ -419,14 +423,6 @@ scatter!(ax3,gene_pos,gene_table.sig_ints,color=gene_table.sig_ints,markersize=2
 rowsize!(fig2.layout,2,Auto(0.2))
 colsize!(fig2.layout,1,Auto(0.2))
 
-#Add labels to chromosomes on triangle plot
-chr_label_pos = map(i-> (i,1000000), vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 1:7]))
-
-
-for (chr_place,chr_label) in zip(chr_label_pos,chr_order)
-    annotation!(ax3,chr_place,chr_label)
-end
-
 save(plot_prefix*"fig2.pdf",fig2)
 
 ```
@@ -467,12 +463,31 @@ genes=gsub(".treefile","",list.files("data/dipterans/trees",pattern=".treefile")
 
 gostres = gost(list(c1=c1,c2=c2,c3=c3,c4=c4,c5=c5,c6=c6),organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
 
-#After inspection of results, we chose some top terms to highlight for export tables
+#After inspection of results, we chose some top terms to highlight for export tables, each table saved seperately
 
-#Community 1
-c1_res = tibble(gostres$result[which(gostres$result$query=="c1"),])
+highlighted = gostres$result[which(gostres$result$highlighted),]
+write_table(highlighted,file="data/dipterans/D_melanogaster_highlighted.csv",sep=",")
 
+gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")
+gene_table$community = sapply(gene_table$name,function(x) comm$membership[which(comm$name==x)])
+obs = table(sig_ERC$chr_combo)
+exp = sapply(names(obs),function(x){chrs=strsplit(x,split="-");length(which(gene_table$chr==chrs[[1]][1]))*length(which(gene_table$chr==chrs[[1]][2]))})*length(sig_ERC.r)/(binom(length(gene_table),2))
+rat = obs/exp
+dev_table = tibble(obs=as.numeric(obs),exp=as.numeric(exp),ratio=as.numeric(rat),chr_combo=names(obs))
+dev_table$chr_i = unlist(lapply(chrs,function(x) x[1]))
+dev_table$chr_j = unlist(lapply(chrs,function(x) x[2]))
 
+require(ggplot2)
+require(cowplot)
+theme_set(theme_cowplot())
+
+chr_plot = ggplot(dev_table,aes(x=chr_i,y=chr_j))+geom_tile(aes(fill=ratio))+
+            scale_fill_continuous(type="viridis",trans="log2")+
+            geom_text(aes(label=obs),vjust=-1,color="white")+
+            geom_text(aes(label=exp),vjust=1,color="white")+
+            labs(x="Chr 1",y="Chr 2",y="O(Interactions)/E(Interactions)")
+
+savefig(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf")
 ```
 
 ## Expression analysis
