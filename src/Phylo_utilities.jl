@@ -29,7 +29,6 @@ end
     rescale_tree(tree:Phylo,scale) -> Phylo
 All branch lengths in `tree` are rescaled by multiplying by scale.
 """
-
 function rescale_tree(tree,scale)
     tree_c = deepcopy(tree)
     for e in getbranches(tree_c)
@@ -39,13 +38,10 @@ function rescale_tree(tree,scale)
 end
 
 
-
-
 """
-    rescale_tree(tree:Phylo,scale) -> Phylo
-All branch lengths in `tree` are rescaled by multiplying by scale.
+    rescale_tree!(tree:Phylo,scale)
+All branch lengths in `tree` are rescaled by multiplying by scale, modifies existing tree
 """
-
 function rescale_tree!(tree,scale)
     for e in getbranches(tree)
         e.length = e.length * scale
@@ -72,7 +68,7 @@ end
 
 """
     breakdown_tree(tree::Phylo) → DataFrame(bl::Float64,node::String)
-    labels each branch by the node it terminates in, and returns a table with the branch name and lenght
+labels each branch by the node it terminates in, and returns a table with the branch name and lenght
 """
 function breakdown_tree(tree)
     sum_table=DataFrame(:bl=>missings(Float64,nbranches(tree)),:node=>missings(String,nbranches(tree)))
@@ -91,9 +87,8 @@ end
 
 """
     getdescendant_leaves(tree,n) -> [node_names]
-    takes a tree and a node and returns the name of all terminal descendents of that node
+Takes a tree and a node and returns the name of all terminal descendents of that node
 """
-
 function getdescendant_leaves(tree,n)
     #This isn't ideal, but we rely on the fact that internal nodes are relabeled by Phylo.jl to start with "Node"
     all_nodes = Phylo.getdescendants(tree,n)
@@ -108,19 +103,19 @@ end
 """
     run_astral(trees) -> ASTRAL4 consensus tree
 """
-function run_astral(trees)
+function run_astral(trees;name="astral_consensus.newick")
     treefile=data_dir*"trees/concat_trees.tre"
     for t in trees
         run(pipeline(`cat $t`),stdout=treefile,append=true)
     end
-    run(`astral4 -i $treefile -o $data_dir/trees/astral_consensus.newick --root $outgroup`)
+    run(`astral4 -i $treefile -o $data_dir/trees/$name --root $outgroup`)
     run(`rm $treefile`)
 end
 
 """
     run_iqtree(seq) -> iqtree gene tree
+Takes a sequence name and runs iqtree on an `aligned.fasta` file in the `aligned` folder.
 """
-
 function run_iqtree(seq)
     cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
     run(pipeline(cmd;stderr=devnull))
