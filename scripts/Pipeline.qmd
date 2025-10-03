@@ -137,11 +137,14 @@ You will need two specify the species tree and the list of trees to compare.
 #| label: ERC calculations
 #Change if using some other species tree.
 species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
-trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
+tree_files = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
+#This takes a while, but saves a lot of reading time in the ERC loop. It does increase memory requirements even further, consider running `runERC_files(trefiles,species_tree)` if you are being memory limited. But, you are avoiding factorial(length(tree_files)-1) file read operations, which is also probably a benefit.
+trees = [read_tree(t) for t in tree_files]
 
-ERC = runERC_files(trees,species_tree;cutoff=5)
+ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
+ERC = ERC[findall(isfinite.(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
 ERC.i = genes[Int.(ERC.i)]
 ERC.j = genes[Int.(ERC.j)]
@@ -160,33 +163,53 @@ The chr_dict is just a quick conversion from NCBIs chr ids to something human re
 
 ```{julia}
 #| label: gene_table import
+include(srcdir("Annotation_functions.jl"))
+
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
+
+gene_table = DataFrame(gene=genes,
+    stable_id=missings(String,length(genes)),
+    name=missings(String,length(genes)),
+    flybase=missings(String,length(genes)),
+    chr=missings(String,length(genes)),
+    pos_1=missings(Int64,length(genes)),
+    pos_2=missings(Int64,length(genes)),
+    description=missings(String,length(genes)),
+    num_rbh=missings(Int64,length(genes)))
+
+#Can't query all 12k at once, split into chunks of 100
+part_size=200
+parts = collect(Iterators.partition(genes,part_size))
+for gs in 1:length(parts)
+    gene_names = copy(parts[gs])
+    subtable = find_name(gene_names,"dmelanogaster_gene_ensembl")
+    rows = indexin(subtable.gene,genes)
+    gene_table[rows,2:8] = subtable[:,2:8]
+    gene_table.num_rbh[(1:length(gene_names)).+part_size*(gs-1)] = num_rbh.(gene_names)
+end
+
+#For genes with no Ensembl annotation, we look in the gff file to at least get location data
+
 using CSV
+
 gff_table = CSV.read(data_dir*focal*"_genes.gff",DataFrame,header=false,skipto=9)
 gff_table = gff_table[completecases(gff_table),:]
 
 chr_dict = Dict("NC_004354.4"=>"X","NT_033779.5"=>"2L","NT_033778.4"=>"2R","NT_037436.4"=>"3L","NT_033777.3"=>"3R","NC_004353.4"=>"4","NC_024512.1"=>"Y","NC_024511.2"=>"MT")
 
 gff_table.Column1 = [get(chr_dict,c,"NA") for c in gff_table.Column1]
-
-genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
-gene_table = DataFrame(gene=genes,chr=missings(String,length(genes)),pos_1=missings(Int64,length(genes)),pos_2=missings(Int64,length(genes)),num_rbh=missings(Int64,length(genes)))
-
-for g in 1:length(genes)
+to_do_genes = findall(ismissing.(gene_table.chr))
+for g in to_do_genes
     subtable = gff_table[findall(occursin.(genes[g],gff_table.Column9)),:]
     if size(subtable)[1] > 0
         gene_table.chr[g] = subtable.Column1[1]
         gene_table.pos_1[g] = minimum(subtable.Column4)
         gene_table.pos_2[g] = maximum(subtable.Column5)
-        gene_table.num_rbh[g] = length(getleafnames(read_tree(data_dir*"trees/"*gene_table.gene[g]*".treefile")))
     end
 end
 
-#Flybase annotate, add Flybase name
-
 
 CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
-
-
 ```
 
 ## ERC network analysis
@@ -203,31 +226,18 @@ trees_null = simulate_tree_set(species_tree,40,1000,4,73,focal)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 ERC_sims = ERC_sims[completecases(ERC_sims),:]
 disallowmissing!(ERC_sims)
-#Narrow to significant correlations (these are the magnitudes we actually care about)
-sub_ERC_sims = ERC_sims[findall(ERC_sims.pval .< 0.05/length(ERC_sims.r)),:]
-#Create a cut-off per number of shared edges - more heteroskedasticity when shared edges low
-function dynamic_quantile(ERC,n_shared;q=0.95)
-    vec = ERC.fERC[findall(ERC.n_edges .== n_shared)]
-    if length(vec)>1
-        return(quantile(vec,q))
-    else
-        return(Inf)
-    end
-end
-sim_cutoff_shared = [dynamic_quantile(sub_ERC_sims,x) for x in 3:73]
-ERC.sims = [x.fERC > sim_cutoff_shared[Int(x.shared_tips)-2]  for x in eachrow(ERC)]
+sims_cdf = ecdf(ERC_sims.fERC)
+ERC.sims = sims_cdf.(ERC.fERC)
 
 #Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
 ERC_null = calculate_ERC_exp_null(species_tree,1000)
 disallowmissing!(ERC_null)
 ERC_null.fERC = fisher_trans.(ERC_null.r,length(get_branch_lengths(species_tree)))
 null_cdf = ecdf(ERC_null.fERC)
-
 ERC.null = null_cdf.(ERC.fERC)
 
-
-#Take only edges outside of expectation from negative sim
-gt_null = findall(ERC.null .>0.95)
+#Take only edges outside of expectation from positive sim
+gt_sims = findall(ERC.sims .>0.95)
 #Now, edges that are Bonferonni significant _and_ beyond dynamic cut-off are retained further.
 sig_ERC = ERC[intersect(findall(ERC.sims),findall(ERC.pval .< 0.05/length(gt_null)),:]
 
@@ -265,6 +275,7 @@ Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
 ```
 
 Next, some summaries for the gene_table:
+
 ```{julia}
 
 
@@ -488,7 +499,6 @@ rowgap!(fig2.layout,-15)
 save(plot_prefix*"fig2.pdf",fig2)
 
 ```
-
 
 ## Community detection
 

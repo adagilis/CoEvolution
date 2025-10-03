@@ -22,13 +22,13 @@ Similarly, I don't perform the z-transform as done in both prior approaches beca
 
 In short - there's definitely more to develop this approach, but we're sticking to published methods here for simplicity.
 """
-function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5)
+function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min_shared=3)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
     gene2 = deepcopy(tree2)
     tips_both=tip_overlap(gene1,gene2)
     shared_tips = length(tips_both)
-    if(length(tips_both) >= 3)
+    if(length(tips_both) >= min_shared)
         keeptips!(template,tips_both)
         keeptips!(gene1,tips_both)
         keeptips!(gene2,tips_both)        
@@ -69,7 +69,7 @@ end
     runERC_files(trees,species_tree) → DataFrame{[i,j,branches,cor,p-value]}
 Calculate a set of ERC values given a list of gene trees `trees` and a species tree `species_tree`. Returns DataFrame object with five columns. 
 """
-function runERC_files(trees,species_tree;cutoff=5)
+function runERC_files(trees,species_tree;cutoff=5,min_shared=3)
     tprint("{blue}fERC score calculation:{/blue}")
     println("Using "*string(Threads.nthreads())*" threads.")
     num_comp = binomial(length(trees),2)
@@ -85,7 +85,7 @@ function runERC_files(trees,species_tree;cutoff=5)
         ti = read_tree(trees[i])
         tj = read_tree(trees[j])
         try
-            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
+            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff,min_shared=min_shared)
         catch
             #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
             ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing,:shared_tips=>missing)
@@ -101,9 +101,9 @@ end
 
 """
     runERC_collection(trees,species_tree::Phylo;cutoff=5) -> DataTable[i,j,edges_kept,r2,pval]
-    calculates ERC values using the `calculate_ERC` function for all pairs of trees in the trees object.
+calculates ERC values using the `calculate_ERC` function for all pairs of trees in the trees object.
 """
-function runERC_collection(trees,species_tree;cutoff=5)
+function runERC_collection(trees,species_tree;cutoff=5,min_shared=3)
     tprint("{blue}fERC score calculation:{/blue}")
     println("Using "*string(Threads.nthreads())*" threads.")
     num_comp = binomial(length(trees),2)
@@ -117,10 +117,8 @@ function runERC_collection(trees,species_tree;cutoff=5)
     @floop ThreadedEx() for index in total
         i = ERC_res.i[index]
         j = ERC_res.j[index]
-        ti = trees[i]
-        tj = trees[j]
         try
-            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff)
+            ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=cutoff,min_shared)
         catch
             #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
             ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing,:shared_tips=>missing)

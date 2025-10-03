@@ -2,7 +2,7 @@
 
 julia_version = "1.11.7"
 manifest_format = "2.0"
-project_hash = "be353dfc6dc68caafc0ff60beee62e4545f78700"
+project_hash = "5b6cc8cada18a5d224d57ed895adaa62368c0aaf"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -191,6 +191,12 @@ deps = ["TranscodingStreams"]
 git-tree-sha1 = "017562e86afcd2a6a2a9220606a40b54604887c9"
 uuid = "47718e42-2ac5-11e9-14af-e5595289c2ea"
 version = "0.1.5"
+
+[[deps.BioMart]]
+deps = ["CSV", "DataFrames", "GenomicFeatures", "HTTP", "LightXML", "Memoization"]
+git-tree-sha1 = "fde5daa6cd7d43084a4439a749b041434fc6fcb1"
+uuid = "d3a97c8b-a0ae-4566-9541-30732b1a2223"
+version = "0.1.1"
 
 [[deps.BioSequences]]
 deps = ["BioSymbols", "PrecompileTools", "Random", "Twiddle"]
@@ -772,6 +778,12 @@ git-tree-sha1 = "27299071cc29e409488ada41ec7643e0ab19091f"
 uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
 version = "0.73.17+0"
 
+[[deps.GenomicFeatures]]
+deps = ["BioGenerics", "DataStructures", "IntervalTrees"]
+git-tree-sha1 = "51b0906aab4a9ae1a4095c27994361a582c5ebe1"
+uuid = "899a7d2d-5c61-547b-bef9-6698a8d05446"
+version = "2.1.0"
+
 [[deps.GeometryBasics]]
 deps = ["EarCut_jll", "Extents", "IterTools", "LinearAlgebra", "PrecompileTools", "Random", "StaticArrays"]
 git-tree-sha1 = "1f5a80f4ed9f5a4aada88fc2db456e637676414b"
@@ -1009,6 +1021,11 @@ weakdeps = ["Random", "RecipesBase", "Statistics"]
     IntervalSetsRecipesBaseExt = "RecipesBase"
     IntervalSetsStatisticsExt = "Statistics"
 
+[[deps.IntervalTrees]]
+git-tree-sha1 = "dc3b97bb5c9cb7c437f74027309f2c2f09a82aaf"
+uuid = "524e6230-43b7-53ae-be76-1e9e4d08d11b"
+version = "1.1.0"
+
 [[deps.InverseFunctions]]
 git-tree-sha1 = "a779299d77cd080bf77b97535acecd73e1c5e5cb"
 uuid = "3587e190-3f89-42d0-90ee-14403ec27112"
@@ -1225,6 +1242,12 @@ git-tree-sha1 = "d3c8af829abaeba27181db4acb485b18d15d89c6"
 uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
 version = "2.41.1+0"
 
+[[deps.LightXML]]
+deps = ["Libdl", "XML2_jll"]
+git-tree-sha1 = "d5d2e3abfb30ea9c2cff81d243e7235b51315ec2"
+uuid = "9c8b4983-aa76-5018-a973-4c85ecc9e179"
+version = "0.9.2"
+
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -1321,6 +1344,12 @@ version = "2.28.6+0"
 git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
 uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 version = "0.3.2"
+
+[[deps.Memoization]]
+deps = ["MacroTools"]
+git-tree-sha1 = "55dc27dc3d663900d1d768822528960acadc012a"
+uuid = "6fafb56a-5788-4b4e-91ca-c0cea6611c73"
+version = "0.1.14"
 
 [[deps.MicroCollections]]
 deps = ["Accessors", "BangBang", "InitialValues"]
