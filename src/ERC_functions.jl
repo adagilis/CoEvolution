@@ -118,7 +118,7 @@ function runERC_collection(trees,species_tree;cutoff=5,min_shared=3)
         i = ERC_res.i[index]
         j = ERC_res.j[index]
         try
-            ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=cutoff,min_shared)
+            ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=cutoff,min_shared=min_shared)
         catch
             #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
             ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing,:shared_tips=>missing)
