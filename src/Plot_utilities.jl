@@ -26,3 +26,22 @@ function graph_plot(graph,dataframe;cols=:blue,sizes=1,linealpha=0.05)
     GLMakie.scatter!(df[:,1],df[:,2])
     return(network_plot)
 end
+
+"""
+    sig2mat
+Function which takes an ERC result data-table, and returns an n x n matrix, where each entry (i,j) is 1-ERC^2 value for genes i and j
+"""
+function sig2mat(ERC;default=0)
+    scores = 1.0 .- ERC.r.^2
+    genes = union(ERC.i,ERC.j)
+    retmat=fill(default,length(genes),length(genes))
+    for g in 1:length(genes)
+        id_g_i = findall(ERC.i .==g)
+        id_g_j = findall(ERC.j .==g)
+        id_2_i = indexin(ERC.j[id_g_i],genes)
+        id_2_j = indexin(ERC.i[id_g_j],genes)
+        retmat[id_g_i,id_2_i] = scores[id_g_i]
+        retmat[id_g_j,id_2_j] = scores[id_g_j]
+    end
+    return(retmat)
+end

@@ -36,11 +36,7 @@ If you would like to use this pipeline to download and prep data, make sure you 
 
 5)  [datasets-cli](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/)
 6)  [ncbi e-utils](https://www.ncbi.nlm.nih.gov/books/NBK179288/)
-
-If you also wish to run co-introgression analysis, you'll need:
-
-7)  [Dsuite](https://github.com/millanek/Dsuite)
-8)  [bcftools](https://www.htslib.org/download/)
+7)  seq-kit
 
 Hopefully Julia is up and running at this point, so we can begin on the main steps of the analysis.
 
@@ -138,7 +134,7 @@ You will need two specify the species tree and the list of trees to compare.
 #Change if using some other species tree.
 species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
 tree_files = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
-#This takes a while, but saves a lot of reading time in the ERC loop. It does increase memory requirements even further, consider running `runERC_files(trefiles,species_tree)` if you are being memory limited. But, you are avoiding factorial(length(tree_files)-1) file read operations, which is also probably a benefit.
+#This takes a while, but saves a lot of reading time in the ERC loop. It does increase memory requirements even further, consider running `runERC_files(trefiles,species_tree)` if you are being memory limited. But, you are avoiding sum(1:length(tree_files)) file read operations, which is also probably a benefit.
 trees = [read_tree(t) for t in tree_files]
 
 ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
@@ -218,11 +214,11 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
 ```{julia}
 include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*"trees/astral_consensus.newick")
+species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
 
 
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,40,1000,4,73,focal)
+trees_null = simulate_tree_set(species_tree,100,1000,4,73,focal)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 ERC_sims = ERC_sims[completecases(ERC_sims),:]
 disallowmissing!(ERC_sims)
@@ -239,7 +235,7 @@ ERC.null = null_cdf.(ERC.fERC)
 #Take only edges outside of expectation from positive sim
 gt_sims = findall(ERC.sims .>0.95)
 #Now, edges that are Bonferonni significant _and_ beyond dynamic cut-off are retained further.
-sig_ERC = ERC[intersect(findall(ERC.sims),findall(ERC.pval .< 0.05/length(gt_null)),:]
+sig_ERC = ERC[intersect(findall(ERC.sims .> 0.95),findall(ERC.pval .< 0.05/length(gt_sims))),:]
 
 CSV.write(data_dir*focal*"_sig_ints.csv",sig_ERC)
 ```
@@ -279,13 +275,13 @@ Next, some summaries for the gene_table:
 ```{julia}
 
 
-#Annotate the gene table.
+#Annotate the gene table.sig_
 function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);end
 idx = map(indexInERC,gene_table.gene)
 gene_table.sig_ints = [length(union(findall(sig_ERC.i.==x),findall(sig_ERC.j.==x))) for x in gene_table.gene]
 gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
 gene_table.mean_fERC = [mean(ERC.fERC[idx[i]]) for i in 1:length(idx)]
-
+gene_table.mean_shared = [mean(ERC.n_edges[idx[i]]) for i in 1:length(idx)]
 CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
 
 
@@ -302,6 +298,7 @@ include(srcdir("Plot_utilities.jl"))
 isdir(data_dir*"plots") || mkdir(data_dir*"plots")
 plot_prefix=data_dir*"plots/"*focal*"_"
 
+#Panel A: Histograms of fERC for three distributions
 fig1 = Figure(size=(800,800))
 ax1 = Axis(fig1[1,1],
     xlabel="fERC",
@@ -337,7 +334,7 @@ ax2, hm = hexbin(fig1[1,2],ERC.n_edges,ERC.fERC,
     threshold=2)
 
 loess_1_2 = loess(collect(ERC.n_edges),collect(ERC.fERC),span=0.1) 
-xs = range(4,125,length=200)
+xs = range(5,120,length=200)
 ys = predict(loess_1_2,xs)
 lines!(ax2,xs,ys,linewidth=8,color=:white)
 lines!(ax2,xs,ys,linewidth=4,color=:black)
@@ -512,7 +509,14 @@ sig_ERC = read_csv("data/dipterans/D_melanogaster_sig_ints.csv")
 edges = c(apply(sig_ERC,1,function(x) c(x[1],x[2])))
 graph = make_graph(edges,directed=FALSE)
 
-comms = cluster_leiden(graph,objective_function="modularity",n_iterations=100)
+weights = sig_ERC$fERC
+weights = weights - min(weights)
+weights = weights / max(weights)
+                
+comms = cluster_leiden(graph,objective_function="modularity",resolution=1.5,weights = weights,n_iterations=1000)
+                
+comms$membership = match(1:max(comms$membership),order(table(comms$membership),decreasing=TRUE))[comms$membership]
+
 write_tsv(data.frame(name=comms$names,community=comms$membership),file="data/dipterans/D_melanogaster_communities.tsv")
 ```
 
@@ -522,24 +526,52 @@ The resulting communities are examined for GO category enrichment. The easiest a
 
 ```{r}
 require(gprofiler2)
+require(ggplot2)
 #Five major clusters
-c1 = comms$names[which(comms$membership == 1)]
-c2 = comms$names[which(comms$membership == 2)]
-c3 = comms$names[which(comms$membership == 3)]
-c4 = comms$names[which(comms$membership == 4)]
-c5 = comms$names[which(comms$membership == 5)]
-c6 = comms$names[which(comms$membership == 6)]
+big_comms = which(table(comms$membership)>40)
+cs = lapply(1:length(big_comms),function(x) comms$names[which(comms$membership == x)])
+names(cs) = sapply(1:length(big_comms),function(x) paste("comm_",x,sep=""))
 
 genes=gsub(".treefile","",list.files("data/dipterans/trees",pattern=".treefile"))
 
-gostres = gost(list(c1=c1,c2=c2,c3=c3,c4=c4,c5=c5,c6=c6),organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
+gostres = gost(cs,organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
+write_csv(gostres$result,file="data/dipterans/D_melanogaster_fullGOProfiler.csv")
+#After inspection of results, we chose some top terms to highlight for export tables, each table saved seperately
 
-#After inspection of results, we chose some top terms to highlight for export tables
+highlighted = gostres$result[which(gostres$result$highlighted),]
+write_csv(highlighted,file="data/dipterans/D_melanogaster_highlighted.csv")
 
-#Community 1
-c1_res = tibble(gostres$result[which(gostres$result$query=="c1"),])
+gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")
+gene_table$community = sapply(gene_table$name,function(x) comms$membership[which(comms$name==x)])
+obs = table(sig_ERC$chr_combo)
+expo = sapply(names(obs),function(x){
+    chrs=strsplit(x,split="-");
+    scale=1;
+    if(chrs[[1]][[1]]==chrs[[1]][[2]]){
+        choose(length(which(gene_table$chr==chrs[[1]][[1]])),2)   
+    } else {
+        length(which(gene_table$chr==chrs[[1]][1]))*length(which(gene_table$chr==chrs[[1]][2]))    
+    }
+})
+perc = length(sig_ERC$r)/(choose(length(gene_table$gene),2))
+expo = expo * perc
+rat = obs/expo
+dev_table = tibble(obs=as.numeric(obs),exp=floor(as.numeric(expo)),ratio=as.numeric(rat))
+chrs = strsplit(names(obs),split="-")
+dev_table$chr_i = unlist(lapply(chrs,function(x) x[1]))
+dev_table$chr_j = unlist(lapply(chrs,function(x) x[2]))
 
+require(ggplot2)
+require(cowplot)
+theme_set(theme_cowplot())
 
+chr_plot = ggplot(dev_table,aes(x=chr_i,y=chr_j))+geom_tile(aes(fill=ratio))+
+            scale_fill_continuous(type="viridis",trans="log2")+
+            geom_text(aes(label=obs),vjust=-1,color="white")+
+            geom_text(aes(label=exp),vjust=1,color="white")+
+            labs(x="Chr 1",y="Chr 2",y="O(Interactions)/E(Interactions)")
+
+ggsave(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf")
 ```
 
 ## Expression analysis
@@ -576,4 +608,44 @@ string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_")
 
 
 joint_tab = innerjoin(sig_ERC,string_db,on=:gid)
+```
+
+## Converting to a similarity matrix
+
+For several types of analyses, we need to convert the long ERC output to a wide format in order to calculate similarity matrices.
+
+```{julia}
+using Tables
+fERC_mat = missings(Float64,length(genes),length(genes))
+for i in 1472:(length(genes)-1)
+    idx_i_1 = findall(ERC.i .== gene_table.gene[i])
+    idx_i_2 = findall(ERC.j .== gene_table.gene[i])
+    for j in (i+1):length(genes)
+        idx = union(findall(ERC.j[idx_i_1] .== gene_table.gene[j]),findall(ERC.i[idx_i_2] .== gene_table.gene[j]))
+        if length(idx) == 1
+            fERC_mat[i,j] = ERC.fERC[idx][1]
+            fERC_mat[j,i] = ERC.fERC[idx][1]
+        end
+    end
+end
+
+CSV.write(data_dir*focal*"_fERC_matrix.tsv",Tables.table(fERC_mat),writeheader=false)
+
+genes2 = union(sig_ERC.i,sig_ERC.j)
+sig_mat = zeros(Float64,length(genes2),length(genes2))
+
+for i in 1:(length(genes2)-1)
+    idx_i_1 = findall(sig_ERC.i .== genes2[i])
+    idx_i_2 = findall(sig_ERC.j .== genes2[i])
+    for j in (i+1):length(genes2)
+        idx = union(findall(sig_ERC.j[idx_i_1] .== genes2[j]),findall(sig_ERC.i[idx_i_2] .== genes2[j]))
+        if length(idx) == 1
+            sig_mat[i,j] = sig_ERC.fERC[idx][1]
+            sig_mat[j,i] = sig_ERC.fERC[idx][1]
+        end
+    end
+end
+
+CSV.write(data_dir*focal*"_sigERC_matrix.tsv",Tables.table(sig_mat),writeheader=false)
+
 ```

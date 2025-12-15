@@ -22,7 +22,7 @@ Similarly, I don't perform the z-transform as done in both prior approaches beca
 
 In short - there's definitely more to develop this approach, but we're sticking to published methods here for simplicity.
 """
-function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min_shared=3)
+function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min_shared=3,min_edges=4)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
     gene2 = deepcopy(tree2)
@@ -43,7 +43,7 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min
         rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"] 
         rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
-        if(length(kept_edges)>3)
+        if(length(kept_edges)>min_edges)
             r = cor(rates_1[kept_edges],rates_2[kept_edges])
             fERC = fisher_trans(r,length(kept_edges))
             pval = pvalue(CorrelationTest(rates_1[kept_edges],rates_2[kept_edges]))
@@ -69,7 +69,7 @@ end
     runERC_files(trees,species_tree) → DataFrame{[i,j,branches,cor,p-value]}
 Calculate a set of ERC values given a list of gene trees `trees` and a species tree `species_tree`. Returns DataFrame object with five columns. 
 """
-function runERC_files(trees,species_tree;cutoff=5,min_shared=3)
+function runERC_files(trees,species_tree;cutoff=5,min_shared=3,min_edges=4)
     tprint("{blue}fERC score calculation:{/blue}")
     println("Using "*string(Threads.nthreads())*" threads.")
     num_comp = binomial(length(trees),2)
@@ -82,19 +82,17 @@ function runERC_files(trees,species_tree;cutoff=5,min_shared=3)
     @floop ThreadedEx() for index in total
         i = ERC_res.i[index]
         j = ERC_res.j[index]
-        ti = read_tree(trees[i])
-        tj = read_tree(trees[j])
         try
-            ERC_res[index,:] = calculate_ERC(i,j,ti,tj,species_tree;cutoff=cutoff,min_shared=min_shared)
+            ERC_res[index,:] = calculate_ERC(i,j,read_tree(trees[i])read_tree(trees[j]),species_tree;cutoff=cutoff,min_shared=min_shared,min_edges=min_edges)
         catch
-            #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
+            #If this happens - something went wrong! Worth thinking about returning something other than missing to identify these cases
             ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing,:shared_tips=>missing)
         end
         next!(p)
     end
-    completed = length(findall(completecases(ERC_res)))
-    data_table=hcat(["Total Pairs","Completed","Insufficient Data"],[num_comp,completed,num_comp-completed])
-    println(Table(data_table;header=["Class","Number of Pairs"]))
+    #completed = length(findall(completecases(ERC_res)))
+    #data_table=hcat(["Total Pairs","Completed","Insufficient Data"],[num_comp,completed,num_comp-completed])
+    #println(Table(data_table;header=["Class","Number of Pairs"]))
     return(ERC_res)
 end
 
@@ -120,7 +118,7 @@ function runERC_collection(trees,species_tree;cutoff=5,min_shared=3)
         try
             ERC_res[index,:] = calculate_ERC(i,j,trees[i],trees[j],species_tree;cutoff=cutoff,min_shared=min_shared)
         catch
-            #If this happens - something went wrong! We keep r2 different from 0 to be able to quantify how frequently
+            #If this happens - something went wrong! Worth thinking about returning something other than missing to identify these cases
             ERC_res[index,:] = Dict(:i => i,:j => j,:n_edges =>missing,:r => missing,:fERC=>missing,:pval =>missing,:shared_tips=>missing)
         end
         next!(p)
