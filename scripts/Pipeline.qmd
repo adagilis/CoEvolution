@@ -149,6 +149,7 @@ using Arrow
 Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
+
 ```
 
 ## Gene Table Annotation and comparisons
@@ -512,8 +513,14 @@ graph = make_graph(edges,directed=FALSE)
 weights = sig_ERC$fERC
 weights = weights - min(weights)
 weights = weights / max(weights)
-                
-comms = cluster_leiden(graph,objective_function="modularity",resolution=1.5,weights = weights,n_iterations=1000)
+E(graph)$weight = weights
+
+#Identify only larges connected component
+comps = components(graph)
+drop = names(comps$membership)[which(comps$membership != 1)]
+subgraph = delete_vertices(graph,drop)
+
+comms = cluster_leiden(subgraph,objective_function="modularity",resolution=1,weights = E(subgraph)$weight,n_iterations=10000)
                 
 comms$membership = match(1:max(comms$membership),order(table(comms$membership),decreasing=TRUE))[comms$membership]
 
@@ -527,13 +534,32 @@ The resulting communities are examined for GO category enrichment. The easiest a
 ```{r}
 require(gprofiler2)
 require(ggplot2)
+require(GOSemSim)
+require(org.Dm.eg.db)
+require(clusterProfiler)
+
+
+gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")
 #Five major clusters
-big_comms = which(table(comms$membership)>40)
-cs = lapply(1:length(big_comms),function(x) comms$names[which(comms$membership == x)])
+big_comms = which(table(comms$membership)>50)
+cs = lapply(1:length(big_comms),function(x){
+    genes = comms$names[which(comms$membership == x)]
+    idx = match(genes,gene_table$gene)
+    stable_ids = gene_table$stable_id[idx]
+    stable_ids = stable_ids[!is.na(stable_ids)]
+    stable_egs = mapIds(org.Dm.eg.db,keys=stable_ids,column="ENTREZID",keytype="FLYBASE",multiVals="first")
+    return(stable_egs)
+})
 names(cs) = sapply(1:length(big_comms),function(x) paste("comm_",x,sep=""))
 
 genes=gsub(".treefile","",list.files("data/dipterans/trees",pattern=".treefile"))
+stable_genes = sapply(genes,function(x) gene_table$stable_id[which(gene_table$gene == x)][1])
+stable_EGs = mapIds(org.Dm.eg.db,keys=stable_genes,column="ENTREZID",keytype="FLYBASE",multiVals="first")           
 
+function plot_go(genes) = {
+    
+}
+                      
 gostres = gost(cs,organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
 write_csv(gostres$result,file="data/dipterans/D_melanogaster_fullGOProfiler.csv")
 #After inspection of results, we chose some top terms to highlight for export tables, each table saved seperately
@@ -541,8 +567,41 @@ write_csv(gostres$result,file="data/dipterans/D_melanogaster_fullGOProfiler.csv"
 highlighted = gostres$result[which(gostres$result$highlighted),]
 write_csv(highlighted,file="data/dipterans/D_melanogaster_highlighted.csv")
 
-gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")
-gene_table$community = sapply(gene_table$name,function(x) comms$membership[which(comms$name==x)])
+gene_table$community = sapply(gene_table$gene,function(x) comms$membership[which(comms$name==x)][1])
+                                                     
+gene_table$comm_degree = NA
+#Annotate by degree w/in community
+for( x in 1:length(big_comms)) {
+    idx = which(gene_table$community == big_comms[x])
+    subERC = subset(sig_ERC,i %in% gene_table$gene[idx] & j %in% gene_table$gene[idx])
+    for(i in 1:length(gene_table$gene[idx])){
+        gene_table$comm_degree[idx][i] = length(union(which(subERC$i == gene_table$gene[idx][i]),which(subERC$j == gene_table$gene[idx][i])))
+    }
+}
+
+write_csv(gene_table,"data/dipterans/D_melanogaster_annotated_gene_table.csv")
+
+emmap_cluster = function(gene_list,cats=30) {
+    ego = enrichGO(gene=gene_list,universe=as.character(stable_EGs),OrgDb=org.Dm.eg.db,ont="BP",pAdjustMethod="BH",pvalueCutoff=0.01,readable=TRUE)
+    edo = pairwise_termsim(ego)
+    return(emapplot(edo,categories=cats))
+}
+
+
+gene_predict = function(gene) {
+    subERC = subset(sig_ERC,i==gene | j == gene)
+    partners = setdiff(union(subERC$i,subERC$j),gene)
+    partner_ids = gene_table$stable_id[match(partners,gene_table$gene)]
+    return(enrichGO(partner_ids,keyType="FLYBASE",
+                   OrgDb = org.Dm.eg.db,
+                   universe = gene_table$stable_id,
+                   ont="ALL",
+                   pvalueCutoff=0.01,
+                   pAdjustMethod="BH"))
+}
+
+                              
+#Figure SX
 obs = table(sig_ERC$chr_combo)
 expo = sapply(names(obs),function(x){
     chrs=strsplit(x,split="-");
