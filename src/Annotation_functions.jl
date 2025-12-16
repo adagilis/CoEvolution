@@ -1,6 +1,8 @@
 using BioMart
-
+using CSV
+using DataFrames
 import BioMart: Dataset, Filters, Attributes
+
 
 
 function find_name(gene,dataset)
@@ -32,4 +34,51 @@ end
 
 function num_rbh(gene)
     length(getleafnames(read_tree(data_dir*"trees/"*gene*".treefile")))
+end
+
+function open_GO(file)
+    table = CSV.read(file,DataFrame,header=false,comment="!")
+    rename!(table,:Column1=>:DB,
+    :Column2=>:DB_object_id,
+    :Column3=>:DB_object_symbol,
+    :Column4=>:Qualifier,
+    :Column5=>:GO_ID,
+    :Column6=>:DB_reference,
+    :Column7=>:Evidence_Code,
+    :Column8=>:WithOrFrom,
+    :Column9=>:Aspect,
+    :Column10=>:DB_object_name,
+    :Column11=>:DB_object_synonym,
+    :Column12=>:DB_object_type,
+    :Column13=>:Taxon,
+    :Column14=>:Date,
+    :Column15=>:Assigned_by,
+    :Column16=>:Annotation_Extension,
+    :Column17=>:Gene_Product_Form_ID)
+    return(table)
+end
+
+function gene_GO(stable_id;score=1)
+    if !ismissing(stable_id)
+        subGO = filter(:DB_object_id=> x -> x==stable_id,GO_table)
+        uniGO = unique(subGO.GO_ID)
+        return(DataFrame(:GO=>uniGO,:score=>score))
+    else
+        return(DataFrame(:GO=>missing,:score=>missing))
+    end
+end
+
+function ERC_GO_extend(gene_id,ERC)
+    subERC = filter([:i,:j] => (i,j) -> i==gene_id || j==gene_id,ERC)
+    partners = setdiff(unique(hcat(subERC.i,subERC.j)),[gene_id])
+    fbid = gene_table.flybase[indexin(partners,gene_table.gene)]
+    go_table = reduce(vcat,[gene_GO(fbid[x];score=subERC.fERC[findfirst(subERC.i .== partners[x] .|| subERC.j .== partners[x])]) for x in 1:length(fbid)])
+    if size(go_table) != (0,0)
+        df = combine(groupby(go_table,:GO),:score=> sum,nrow=>:occurence)
+        df = df[completecases(df),:]
+        df.adjust= df.score_sum ./ df.occurence
+        return(sort(df,:adjust))
+    else
+        return(DataFrame(:GO=>missing,:score_sum=>missing,:occurence=>0,:adjust=>0))
+    end
 end
