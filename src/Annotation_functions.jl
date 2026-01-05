@@ -118,3 +118,14 @@ function go_background(ERC)
         return(DataFrame(:GO=>missing,:score_sum=>missing,:occurence=>0,:adjust=>0))
     end
 end
+
+
+"""
+    genes_w_GO(GO_ID) -> gene_ids
+    function to take a GO ID and return a set of gene ids in your gene_table corresponding to that GO term. Useful for visualization.
+"""
+function genes_w_GO(GO_ID)
+    fbids = unique(filter(:GO_ID=>gid -> gid==GO_ID,GO_table).DB_object_id)
+    gene_ids = filter(:flybase=>fid -> fid ∈ fbids,gene_table).gene
+    return(gene_ids)
+end
