@@ -130,3 +130,28 @@ function go2gene(go,GO_table,gene_table)
     return(geneids)
 end
 
+
+function go_background(ERC)
+    genes=unique(hcat(ERC.i,ERC.j))
+    ave_ERC = [mean(filter([:i,:j] => (i,j) -> i == g || j == g,ERC).fERC) for g in genes]
+    go_table = reduce(vcat,[gene_GO(genes[x];score=ave_ERC[x]) for x in 1:length(genes)])
+    if size(go_table) != (0,0)
+        df = combine(groupby(go_table,:GO),:score=> sum,nrow=>:occurence)
+        df = df[completecases(df),:]
+        df.adjust= df.score_sum ./ df.occurence
+        return(sort(df,:adjust))
+    else
+        return(DataFrame(:GO=>missing,:score_sum=>missing,:occurence=>0,:adjust=>0))
+    end
+end
+
+
+"""
+    genes_w_GO(GO_ID) -> gene_ids
+    function to take a GO ID and return a set of gene ids in your gene_table corresponding to that GO term. Useful for visualization.
+"""
+function genes_w_GO(GO_ID)
+    fbids = unique(filter(:GO_ID=>gid -> gid==GO_ID,GO_table).DB_object_id)
+    gene_ids = filter(:flybase=>fid -> fid ∈ fbids,gene_table).gene
+    return(gene_ids)
+end
