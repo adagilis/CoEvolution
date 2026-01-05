@@ -134,3 +134,46 @@ function run_iqtree(seq)
     catch
     end
 end
+
+"""
+    run_constrained_iqtree(seq,species_tree)
+Runs iqtree constraining tree topology to species tree. Useful to compare to ERC2.0.
+"""
+function run_constrained_iqtree(seq,species_tree)
+    taxa=taxa_in_alignment(seq)
+    cnstrn=deepcopy(species_tree)
+    keeptips!(cnstrn,taxa)
+    writenewick(seq*".constraint",cnstrn)
+    cmd = `iqtree2 -s $seq -ntmax 4 -quiet -t $seq.constraint`
+    run(pipeline(cmd;stderr=devnull))
+    treefile_old = seq*".treefile"
+    treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
+    cmd2 = `mv $treefile_old $treefile_new`
+    run(cmd2)
+    #and clean up
+    try
+        run(`rm $seq.mldist`)
+        run(`rm $seq.model.gz`)
+        run(`rm $seq.ckp.gz`)
+        run(`rm $seq.iqtree`)
+        run(`rm $seq.bionj`)
+        run(`rm $seq.log`)
+        run(`rm $seq.constraint`)
+    catch
+    end
+end
+
+
+"""
+    taxa_in_alignment(file)
+Returns the taxa that exists in an aligned fasta file. 
+"""
+function taxa_in_alignment(file)
+    alignment=open(file,"r")
+    out=[]
+    while(!eof(alignment))
+        l=readline(alignment)
+        startswith(l,">") && append!(out,[l[2:length[l]]])
+    end
+    return(out)
+end

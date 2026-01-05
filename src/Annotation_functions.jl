@@ -83,38 +83,50 @@ end
 
 """
     ERC_GO_extend(gene_id,ERC) -> DataFrame(:GO_term,:score,:occurence,:adjusted_score)
-    Requires `gene_table` and `GO_table` to exist. For a given gene and set of evolutionary rate correlations, returns a list of GO terms of interactions partners, weighted by their co-evolutionary score. 
-    Definitely needs a better approach to capture null expectation. Simplest approach would be to perform GO-enrichment among significant terms, but the current approach allows weighting by the relative ERC score, which is harder to capture with GO-enrichment.
+Requires `gene_table` and `GO_table` to exist. For a given gene and set of evolutionary rate correlations, returns a list of GO terms of interactions partners, weighted by their co-evolutionary score. 
+Definitely needs a better approach to capture null expectation. Simplest approach would be to perform GO-enrichment among significant terms, but the current approach allows weighting by the relative ERC score, which is harder to capture with GO-enrichment.
 """
-function ERC_GO_extend(gene_id,ERC)
+function ERC_GO_extend(gene_id,ERC,back_GO)
+    back_dict = Dict(back_GO.GO_ID .=> 1:length(back_GO.GO_ID))
     subERC = filter([:i,:j] => (i,j) -> i==gene_id || j==gene_id,ERC)
     partners = setdiff(unique(hcat(subERC.i,subERC.j)),[gene_id])
-    fbid = gene_table.flybase[indexin(partners,gene_table.gene)]
+    idx = indexin(partners,gene_table.gene)
+    partners = partners[findall((!isnothing).(idx))]
+    idx = idx[findall((!isnothing).(idx))]
+    fbid = gene_table.flybase[idx]
     go_table = reduce(vcat,[gene_GO(fbid[x];score=subERC.fERC[findfirst(subERC.i .== partners[x] .|| subERC.j .== partners[x])]) for x in 1:length(fbid)])
     if size(go_table) != (0,0)
-        df = combine(groupby(go_table,:GO),:score=> sum,nrow=>:occurence)
-        df = df[completecases(df),:]
-        df.adjust= df.score_sum ./ df.occurence
-        return(sort(df,:adjust))
+        df = groupby(go_table,:GO)
+        uniGO = unique(go_table.GO)
+        tests = [length(df[df.keymap[(go,)]].score) >2 && OneSampleTTest(df[df.keymap[(go,)]].score,back_GO.expected[back_dict[go]]) for go in uniGO]
+        ids = findall((!isa).(tests,Bool))
+        ret = DataFrame(:GO => uniGO[ids],
+            :pval=>pvalue.(tests[ids]),
+            :exp=>back_GO.expected[[back_dict[g] for g in uniGO[ids]]],
+            :obs_mean=>combine(df,:score=>mean).score_mean[ids])
+        return(sort(ret,:pval))
     else
-        return(DataFrame(:GO=>missing,:score_sum=>missing,:occurence=>0,:adjust=>0))
+        return(DataFrame(:GO=>missing,:pval=>missing,:exp=>0,:obs_mean=>0))
     end
 end
 
 """
-    go_backbround(ERC) -> DataFrame(:GO_term,:score,:occurence)
-    Generates a set of GO terms for an ERC network, with weights relative to the average ERC value for all genes with that GO term. Useful as a baseline for GO term propogation
+    go_null(GO_table,ERC) -> DataFrame(:GO_term,:expected_score)
+    Generates a set of GO terms for an ERC network, with weights relative to the average ERC value for all genes with that GO term. Useful as a baseline for GO term propogation, used for t-tests later.
 """
-function go_background(ERC)
-    genes=unique(hcat(ERC.i,ERC.j))
-    ave_ERC = [mean(filter([:i,:j] => (i,j) -> i == g || j == g,ERC).fERC) for g in genes]
-    go_table = reduce(vcat,[gene_GO(genes[x];score=ave_ERC[x]) for x in 1:length(genes)])
-    if size(go_table) != (0,0)
-        df = combine(groupby(go_table,:GO),:score=> sum,nrow=>:occurence)
-        df = df[completecases(df),:]
-        df.adjust= df.score_sum ./ df.occurence
-        return(sort(df,:adjust))
-    else
-        return(DataFrame(:GO=>missing,:score_sum=>missing,:occurence=>0,:adjust=>0))
-    end
+function go_null(GO_table)
+    uniGO = unique(GO_table.GO_ID)
+    mean_scores = [mean(skipmissing(filter(:flybase=> g ->g ∈ GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
+    return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
 end
+
+"""
+    go2gene(go,GO_table,gene_table)
+Return the gene ids for all genes in any GO category. Useful to plot GO categories across the network.
+"""
+function go2gene(go,GO_table,gene_table)
+    fbids = filter(:GO=>g->g==go,GO_table).DB_object_id
+    geneids = filter(:flybase=>fb-> fb \in  fbids,gene_table).gene
+    return(geneids)
+end
+

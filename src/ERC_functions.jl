@@ -127,7 +127,24 @@ function runERC_collection(trees,species_tree;cutoff=5,min_shared=3)
 end
 
 
-
+"""
+    function fisher_trans(r,n_edges)-> fisher transformed correlation value
+"""
 function fisher_trans(r,n_edges)
     return atanh(r) * sqrt(n_edges-3)
+end
+
+
+"""
+    function ERC_outliers(gene,ERC)
+Given a gene id, finds all genes with which its ERC scores are outliers.
+This creates a directional set of interactions, where edge (i,j) exists if i's ERC with j is outside of j's overall distribution of ERC scores.
+Meant to highlight that some genes (say transport proteins) are significantly co-evolving with many other genes, but might have unquely strong interactions with a smaller subset.
+"""
+function ERC_outliers(gene,ERC)
+    subERC=filter([:i,:j]=> (i,j)->i==gene || j==gene,ERC)
+    partners=setdiff(unique(hcat(subERC.i,subERC.j)),[gene])
+    fERCs=[only(filter([:i,:j]=> (i,j)->i==g || j==g,subERC).fERC) for g in partners]
+    quants=[mean(filter([:i,:j]=> (i,j)->i==partners[x] || j==partners[x],ERC).fERC .> fERCs[x]) for x in 1:length(partners)]
+    
 end
