@@ -114,7 +114,10 @@ aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/"))
 
 p=Progress(length(aligned_genes),desc="Running IQTree2")
 @floop ThreadedEx() for seq in aligned_genes
-    run_iqtree(seq)    
+    try 
+        run_constrained_raxml(seq,species_tree)
+    catch    
+    end
     next!(p)
 end
 

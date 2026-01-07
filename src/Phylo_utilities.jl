@@ -139,27 +139,29 @@ end
     run_constrained_iqtree(seq,species_tree)
 Runs iqtree constraining tree topology to species tree. Useful to compare to ERC2.0.
 """
-function run_constrained_iqtree(seq,species_tree)
+function run_constrained_iqtree(seq,species_tree;model=nothing)
     taxa=taxa_in_alignment(seq)
     cnstrn=deepcopy(species_tree)
-    keeptips!(cnstrn,taxa)
-    writenewick(seq*".constraint",cnstrn)
-    cmd = `iqtree2 -s $seq -ntmax 4 -quiet -t $seq.constraint`
-    run(pipeline(cmd;stderr=devnull))
-    treefile_old = seq*".treefile"
-    treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
-    cmd2 = `mv $treefile_old $treefile_new`
-    run(cmd2)
+    to_drop=setdiff(getleafnames(cnstrn),taxa)
+    length(to_drop)>0 && droptips!(cnstrn,to_drop)
+    cfile=data_dir*"trees/"*seq*".cnstrn"
+    writenewick(phylo_to_net(cnstrn),cfile)
+    #Adds quotes around taxon names, need to write own newick output function...
+    fix_names = `sed -i 's/"//g' $cfile`
+    run(pipeline(fix_names))
+    if isnothing(model)
+        cmd = `iqtree2 -s $data_dir/aligned/$seq -ntmax 4 -quiet -cptime 1000 -g $cfile -pre $cfile -mset LG,JTT,Q.insect,NQ.insect`
+    else 
+        cmd = `iqtree2 -s $data_dir/aligned/$seq -ntmax 4 -quiet -cptime 1000 -g $cfile -pre $cfile -m $model`
+    end
+    run(pipeline(cmd))
+    #move to separate folder
+    isdir(data_dir*"trees/cnstrn") || mkdir(data_dir*"trees/cnstrn")
+    run(`mv $cfile.treefile $data_dir/trees/cnstrn/$seq.treefile`)
     #and clean up
-    try
-        run(`rm $seq.mldist`)
-        run(`rm $seq.model.gz`)
-        run(`rm $seq.ckp.gz`)
-        run(`rm $seq.iqtree`)
-        run(`rm $seq.bionj`)
-        run(`rm $seq.log`)
-        run(`rm $seq.constraint`)
-    catch
+    rmfiles =filter(startswith(cfile),readdir(data_dir*"trees/",join=true))
+    for f in rmfiles
+        run(`rm $f`)
     end
 end
 
@@ -168,12 +170,33 @@ end
     taxa_in_alignment(file)
 Returns the taxa that exists in an aligned fasta file. 
 """
-function taxa_in_alignment(file)
+function taxa_in_alignment(seq)
+    file=data_dir*"aligned/"*seq
     alignment=open(file,"r")
-    out=[]
+    out=Vector{String}(undef,0)
     while(!eof(alignment))
         l=readline(alignment)
-        startswith(l,">") && append!(out,[l[2:length[l]]])
+        startswith(l,">") && append!(out,[l[2:length(l)]])
     end
     return(out)
+end
+
+
+"""
+    run_constrained_raxml(seq,species_tree)
+Runs RAxML constraining tree topology to species tree. Useful to compare to ERC2.0.
+"""
+function run_constrained_raxml(seq,species_tree;model="LG+G8+F")
+    taxa=taxa_in_alignment(seq)
+    cnstrn=deepcopy(species_tree)
+    to_drop=setdiff(getleafnames(cnstrn),taxa)
+    length(to_drop)>0 && droptips!(cnstrn,to_drop)
+    cfile=data_dir*"trees/"*seq*".cnstrn"
+    writenewick(phylo_to_net(cnstrn),cfile)
+    #Adds quotes around taxon names, need to write own newick output function...
+    fix_names = `sed -i 's/"//g' $cfile`
+    run(pipeline(fix_names;stderr=devnull))
+    isdir(data_dir*"trees/cnstrn") || mkdir(data_dir*"trees/cnstrn")
+    cmd = `raxml-ng --evaluate --msa $data_dir/aligned/$seq --model $model --tree $cfile --prefix $data_dir/trees/cnstrn/$seq`
+    run(pipeline(cmd))
 end

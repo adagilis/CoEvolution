@@ -35,8 +35,10 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min
         scale_rates = breakdown_tree(template)
         rename!(scale_rates,:bl => :bl_sp)
         branches_1 = breakdown_tree(gene1)
+        branches_1 = branches_1[findall(branches_1.bl .> 0),:]
         rename!(branches_1,:bl => :bl_1)
         branches_2 = breakdown_tree(gene2)
+        branches_2 = branches_2[findall(branches_2.bl .> 0),:]
         rename!(branches_2,:bl => :bl_2)
         all_branches = innerjoin(innerjoin(scale_rates,branches_1,on=:node),branches_2,on=:node)
         dropmissing!(all_branches)
