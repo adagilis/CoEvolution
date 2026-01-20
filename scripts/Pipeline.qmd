@@ -115,7 +115,7 @@ aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/"))
 p=Progress(length(aligned_genes),desc="Running IQTree2")
 @floop ThreadedEx() for seq in aligned_genes
     try 
-        run_constrained_raxml(seq,species_tree)
+        run_iqtree(seq)
     catch    
     end
     next!(p)
@@ -143,7 +143,6 @@ trees = [read_tree(t) for t in tree_files]
 ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
-ERC = ERC[findall(isfinite.(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
 ERC.i = genes[Int.(ERC.i)]
 ERC.j = genes[Int.(ERC.j)]
@@ -151,8 +150,6 @@ ERC.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(ERC)]
 using Arrow
 Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
-
-
 ```
 
 ## Gene Table Annotation and comparisons
@@ -222,7 +219,7 @@ species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
 
 
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,100,1000,4,73,focal)
+trees_null = simulate_tree_set(species_tree,5,1000,4,73,focal)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 ERC_sims = ERC_sims[completecases(ERC_sims),:]
 disallowmissing!(ERC_sims)
@@ -277,8 +274,6 @@ Arrow.write(data_dir*focal*"_ERC_annotated.arrow",ERC)
 Next, some summaries for the gene_table:
 
 ```{julia}
-
-
 #Annotate the gene table.sig_
 function indexInERC(gene); findall(ERC.i .== gene .|| ERC.j .== gene);end
 idx = map(indexInERC,gene_table.gene)
@@ -287,8 +282,6 @@ gene_table.mean_r = [mean(ERC.r[idx[i]]) for i in 1:length(idx)]
 gene_table.mean_fERC = [mean(ERC.fERC[idx[i]]) for i in 1:length(idx)]
 gene_table.mean_shared = [mean(ERC.n_edges[idx[i]]) for i in 1:length(idx)]
 CSV.write(data_dir*focal*"_annotated_gene_table.csv",gene_table)
-
-
 ```
 
 Now we generate some basic summary plots for the data:
@@ -337,11 +330,12 @@ ax2, hm = hexbin(fig1[1,2],ERC.n_edges,ERC.fERC,
     bins=(50,50),
     threshold=2)
 
-loess_1_2 = loess(collect(ERC.n_edges),collect(ERC.fERC),span=0.1) 
-xs = range(5,120,length=200)
-ys = predict(loess_1_2,xs)
-lines!(ax2,xs,ys,linewidth=8,color=:white)
-lines!(ax2,xs,ys,linewidth=4,color=:black)
+
+#loess_1_2 = loess(collect(ERC.n_edges),collect(ERC.fERC),span=0.1) 
+#xs = range(5,120,length=200)
+#ys = predict(loess_1_2,xs)
+#lines!(ax2,xs,ys,linewidth=8,color=:white)
+#lines!(ax2,xs,ys,linewidth=4,color=:black)
 
 
 Colorbar(fig1[1,2][1,2],hm,ticks=[10,100,1000,10000,100000,1000000])
@@ -540,6 +534,7 @@ require(ggplot2)
 require(GOSemSim)
 require(org.Dm.eg.db)
 require(clusterProfiler)
+require(emmapplot)
 
 
 gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")
@@ -558,10 +553,6 @@ names(cs) = sapply(1:length(big_comms),function(x) paste("comm_",x,sep=""))
 genes=gsub(".treefile","",list.files("data/dipterans/trees",pattern=".treefile"))
 stable_genes = sapply(genes,function(x) gene_table$stable_id[which(gene_table$gene == x)][1])
 stable_EGs = mapIds(org.Dm.eg.db,keys=stable_genes,column="ENTREZID",keytype="FLYBASE",multiVals="first")           
-
-function plot_go(genes) = {
-    
-}
                       
 gostres = gost(cs,organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
 write_csv(gostres$result,file="data/dipterans/D_melanogaster_fullGOProfiler.csv")
@@ -587,7 +578,7 @@ write_csv(gene_table,"data/dipterans/D_melanogaster_annotated_gene_table.csv")
 emmap_cluster = function(gene_list,cats=30) {
     ego = enrichGO(gene=gene_list,universe=as.character(stable_EGs),OrgDb=org.Dm.eg.db,ont="BP",pAdjustMethod="BH",pvalueCutoff=0.01,readable=TRUE)
     edo = pairwise_termsim(ego)
-    return(emapplot(edo,categories=cats))
+    return(emapplot(edo,showCategory=cats))
 }
 
 
@@ -628,12 +619,12 @@ require(cowplot)
 theme_set(theme_cowplot())
 
 chr_plot = ggplot(dev_table,aes(x=chr_i,y=chr_j))+geom_tile(aes(fill=ratio))+
-            scale_fill_continuous(type="viridis",trans="log2")+
+            scale_fill_continuous(type="viridis",trans="log2",breaks=c(0.25,0.5,1,2,4,10),labels=c("1/4","1/2","1","2","4","10"))+
             geom_text(aes(label=obs),vjust=-1,color="white")+
-            geom_text(aes(label=exp),vjust=1,color="white")+
-            labs(x="Chr 1",y="Chr 2",y="O(Interactions)/E(Interactions)")
+            geom_text(aes(label=paste("(",exp,")",sep="")),vjust=1,color="white")+
+            labs(x="Chr 1",y="Chr 2",fill="O(Interactions)/E(Interactions)")
 
-ggsave(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf")
+ggsave(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf",width=12,height=7,dpi=400)
 ```
 
 ## Expression analysis
