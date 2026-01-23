@@ -126,7 +126,7 @@ Return the gene ids for all genes in any GO category. Useful to plot GO categori
 """
 function go2gene(go,GO_table,gene_table)
     fbids = filter(:GO=>g->g==go,GO_table).DB_object_id
-    geneids = filter(:flybase=>fb-> fb \in  fbids,gene_table).gene
+    geneids = filter(:flybase=>fb-> fb ∈ fbids,gene_table).gene
     return(geneids)
 end
 
