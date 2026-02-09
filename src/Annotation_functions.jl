@@ -112,7 +112,7 @@ end
 
 """
     go_null(GO_table,ERC) -> DataFrame(:GO_term,:expected_score)
-    Generates a set of GO terms for an ERC network, with weights relative to the average ERC value for all genes with that GO term. Useful as a baseline for GO term propogation, used for t-tests later.
+Generates a set of GO terms for an ERC network, with weights relative to the average ERC value for all genes with that GO term. Useful as a baseline for GO term propogation, used for t-tests later.
 """
 function go_null(GO_table)
     uniGO = unique(GO_table.GO_ID)
@@ -130,7 +130,10 @@ function go2gene(go,GO_table,gene_table)
     return(geneids)
 end
 
-
+"""
+    go_background(ERC)
+Function to take a set of interaction partners and look for the frequency of GO terms in that set of genes. Creates a null of how strong/frequent different GO terms should be for any individual gene.
+"""
 function go_background(ERC)
     genes=unique(hcat(ERC.i,ERC.j))
     ave_ERC = [mean(filter([:i,:j] => (i,j) -> i == g || j == g,ERC).fERC) for g in genes]
@@ -148,7 +151,7 @@ end
 
 """
     genes_w_GO(GO_ID) -> gene_ids
-    function to take a GO ID and return a set of gene ids in your gene_table corresponding to that GO term. Useful for visualization.
+function to take a GO ID and return a set of gene ids in your gene_table corresponding to that GO term. Useful for visualization.
 """
 function genes_w_GO(GO_ID)
     fbids = unique(filter(:GO_ID=>gid -> gid==GO_ID,GO_table).DB_object_id)
