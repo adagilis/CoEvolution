@@ -116,8 +116,12 @@ end
     run_iqtree(seq) -> iqtree gene tree
 Takes a sequence name and runs iqtree on an `aligned.fasta` file in the `aligned` folder.
 """
-function run_iqtree(seq)
-    cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
+function run_iqtree(seq;model=nothing)
+    if isnothing(model)
+        cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
+    else
+        cmd = ???
+    end
     run(pipeline(cmd;stderr=devnull))
     treefile_old = seq*".treefile"
     treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
