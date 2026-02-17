@@ -46,9 +46,10 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min
         rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>min_edges)
-            r = cor(rates_1[kept_edges],rates_2[kept_edges])
+            corTest = CorrelationTest(rates_1[kept_edges],rates_2[kept_edges])
+            r = corTest.statistic
             fERC = fisher_trans(r,length(kept_edges))
-            pval = pvalue(CorrelationTest(rates_1[kept_edges],rates_2[kept_edges]))
+            pval = pvalue(corTest)
         else 
             #Too few edges with values below cutoff
             r = missing
@@ -134,4 +135,22 @@ end
 """
 function fisher_trans(r,n_edges)
     return atanh(r) * sqrt(n_edges-3)
+end
+
+"""
+    function specificity(i,j)-> returns weighted strenght of an interaction.
+        Defined as frac{2*fERC_{ij}}{sum_if ERC_{ij} sum_j + fERC_{ij}} 
+        Represents how much of the significant fERC signal between these two genes is unique to them.
+        Meant to filter out cases where strong interactions with hub genes dominate outputs of analyses - 
+        in some cases we may be more interested in less strong signals of evolution that represent more of 
+        the co-evolutionary signal for the pair of genes together.
+
+        Note that this could also be calculated using the degree of each gene, without ascribing weights based on fERC.
+        That would be, in some ways, more accurately called specificity, but I needed a quick function name.
+"""
+function specificity(a,b,sigERC)
+    sum_a = sum(sigERC.fERC[sigERC.i .==a .|| sigERC.j .==a])
+    sum_b = sum(sigERC.fERC[sigERC.i .==b .|| sigERC.j .==b])
+    val = sigERC.fERC[sigERC.gid .== join(sort([a,b]),"_")]
+    return(2*val/(sum_a+sum_b))
 end

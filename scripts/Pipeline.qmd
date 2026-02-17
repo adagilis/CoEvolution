@@ -49,7 +49,7 @@ The below codeblock is where you can define the major parameters for the pipelin
 #| echo: true
 
 using DrWatson
-@quickactivate "CoEvolution"
+@quickactivate 
 
 #Set these values for your own analysis. Taxon can be given as plain-text, but use ncbi taxon ids when possible.
 taxon = "Diptera"
@@ -100,22 +100,22 @@ Arrow.write(data_dir*focal*"_orthologs.arrow",all_orthologs)
 #And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=DataFrame(Arrow.Table(data_dir*focal*"_orthologs.arrow))"`
 
 #The next step takes a while, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
-
-build_orth_files(all_orthologs,data_dir)
+isdir(data_dir*focal*"/") || mkdir(data_dir*focal*"/")
+build_orth_files(all_orthologs,data_dir*focal*"/")
 
 #Finally, we generate a tree for each gene. Earlier versions we constrained the tree topology, which was faster, but does not allow us to do certain secondary analyses that we will want to, and is probably the wrong way to approach this.
 
 using FLoops
 using ProgressMeter
 
-isdir(data_dir*"trees/") || mkdir(data_dir*"trees/")
+isdir(data_dir*focal*"/trees/") || mkdir(data_dir*focal*"/trees/")
 
-aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*"aligned/"))
+aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*focal*"/aligned/",join=true))
 
 p=Progress(length(aligned_genes),desc="Running IQTree2")
 @floop ThreadedEx() for seq in aligned_genes
     try 
-        run_iqtree(seq)
+        run_iqtree(seq;path=data_dir*focal*"/trees/",mset="Q.insect,NQ.insect,LG,JTT")
     catch    
     end
     next!(p)
@@ -135,18 +135,21 @@ You will need two specify the species tree and the list of trees to compare.
 ```{julia}
 #| label: ERC calculations
 #Change if using some other species tree.
-species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
-tree_files = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
+species_tree = read_tree(data_dir*focal*"/trees/astral_consensus_rerooted.newick")
+tree_files = filter(endswith(".treefile"),readdir(data_dir*focal*"/trees/",join=true))
+
 #This takes a while, but saves a lot of reading time in the ERC loop. It does increase memory requirements even further, consider running `runERC_files(trefiles,species_tree)` if you are being memory limited. But, you are avoiding sum(1:length(tree_files)) file read operations, which is also probably a benefit.
 trees = [read_tree(t) for t in tree_files]
-
 ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
+
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
+
 ERC.i = genes[Int.(ERC.i)]
 ERC.j = genes[Int.(ERC.j)]
 ERC.gid = [join(sort([x.i,x.j]),"_") for x in eachrow(ERC)]
+
 using Arrow
 Arrow.write(data_dir*focal*"_ERC.arrow",ERC)
 ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
@@ -205,7 +208,6 @@ for g in to_do_genes
     end
 end
 
-
 CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 ```
 
@@ -216,7 +218,6 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 ```{julia}
 include(srcdir("ERC_simulations.jl"))
 species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
-
 
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
 trees_null = simulate_tree_set(species_tree,5,1000,4,73,focal)
@@ -535,6 +536,7 @@ require(GOSemSim)
 require(org.Dm.eg.db)
 require(clusterProfiler)
 require(emmapplot)
+require(enrichplot)
 
 
 gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")

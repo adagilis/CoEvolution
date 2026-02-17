@@ -106,7 +106,7 @@ end
 function run_astral(trees;name="astral_consensus.newick")
     treefile=data_dir*"trees/concat_trees.tre"
     for t in trees
-        run(pipeline(`cat $t`),stdout=treefile,append=true)
+        run(pipeline(`cat $t`,stdout=treefile,append=true))
     end
     run(`astral4 -i $treefile -o $data_dir/trees/$name --root $outgroup`)
     run(`rm $treefile`)
@@ -116,15 +116,16 @@ end
     run_iqtree(seq) -> iqtree gene tree
 Takes a sequence name and runs iqtree on an `aligned.fasta` file in the `aligned` folder.
 """
-function run_iqtree(seq;model=nothing)
+function run_iqtree(seq;path="",model=nothing)
     if isnothing(model)
         cmd = `iqtree2 -s $seq -ntmax 4 -quiet`
     else
-        cmd = ???
+        cmd = `iqtree2 -s $seq -ntmax 4 -quiet -mset $model`
     end
     run(pipeline(cmd;stderr=devnull))
     treefile_old = seq*".treefile"
-    treefile_new = replace(replace(seq,r".aligned.fasta"=>s".treefile"),r"/aligned/"=>s"/trees/")
+    seqname = split(last(split(seq,"/")),".")[1]
+    treefile_new = path*seqname*".treefile"
     cmd2 = `mv $treefile_old $treefile_new`
     run(cmd2)
     #and clean up
@@ -154,7 +155,7 @@ function run_constrained_iqtree(seq,species_tree;model=nothing)
     fix_names = `sed -i 's/"//g' $cfile`
     run(pipeline(fix_names))
     if isnothing(model)
-        cmd = `iqtree2 -s $data_dir/aligned/$seq -ntmax 4 -quiet -cptime 1000 -g $cfile -pre $cfile -mset LG,JTT,Q.insect,NQ.insect`
+        cmd = `iqtree2 -s $data_dir/aligned/$seq -ntmax 4 -quiet -cptime 1000 -g $cfile -pre $cfile`
     else 
         cmd = `iqtree2 -s $data_dir/aligned/$seq -ntmax 4 -quiet -cptime 1000 -g $cfile -pre $cfile -m $model`
     end
