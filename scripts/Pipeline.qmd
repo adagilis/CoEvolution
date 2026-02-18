@@ -55,7 +55,7 @@ using DrWatson
 taxon = "Diptera"
 data_dir = datadir("dipterans/") #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
 #Specify the focal species for the analysis.
-focal= "D_melanogaster"
+focal= "A_aegypti"
 #Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
 outgroup_ncbi_id = "Ctenocephalides felis"
 outgroup_name = "C_felis"
@@ -101,7 +101,7 @@ Arrow.write(data_dir*focal*"_orthologs.arrow",all_orthologs)
 
 #The next step takes a while, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
 isdir(data_dir*focal*"/") || mkdir(data_dir*focal*"/")
-build_orth_files(all_orthologs,data_dir*focal*"/")
+build_orth_files(all_orthologs,focal,data_dir)
 
 #Finally, we generate a tree for each gene. Earlier versions we constrained the tree topology, which was faster, but does not allow us to do certain secondary analyses that we will want to, and is probably the wrong way to approach this.
 

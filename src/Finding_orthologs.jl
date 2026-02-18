@@ -1,6 +1,7 @@
 using CSV, DataFrames
 using ProgressMeter
 using FLoops
+using Term
 
 
 """
@@ -48,9 +49,7 @@ function diamond_blastp(db,query,path)
         redirect_stderr(oldstd)
     catch
         redirect_stderr(oldstd)
-        """
-        Could not run blastp using diamond. Check if database exists, and query files are correctly specified.
-        """
+        tprint("{red}Coold not run diamond! Check if properly installed, and sequence exists in directory.{/red}")
     end  
 end
 
@@ -70,9 +69,7 @@ function diamond_makedb(db,path)
         redirect_stderr(oldstd)
     catch
         redirect_stderr(oldstd)
-        """
-        Could not run diamond. Check if sequence exists in working directory!
-        """
+        tprint("{red}Coold not make diamond db! Check if properly installed, sequence exists in directory, and new files can be made.{/red}")
     end
 end
 
@@ -93,9 +90,7 @@ function rbh(species1,species2,path)
         rbh = DataFrame(:species1 => species1,:species2 => species2,:j => complete_cases.Column1,:i => complete_cases.Column2)
         return(rbh)
     catch
-        """
-        Could not find reciprocal best hits. If no diamond errors were thrown, this may simply mean no reciprocal best hits exist.
-        """
+        tprint("{red}Could not detect any reciprocal best hits.{/red}")
     end
 end
 
@@ -122,15 +117,13 @@ end
 Accepts a table that lists reciprocal best hit results and creates aligned sequence files for each set of orthologs.
 Will not output sequences when there are fewer than `cutoff` (default=4) species with the ortholog, as these will not be useful for generating branch lengths either way.
 """
-function build_orth_files(rbh_res,path;cutoff=4)
-    outpath=path*"aligned/"
+function build_orth_files(rbh_res,focal,path;cutoff=4)
+    outpath=path*focal*"/aligned/"
     isdir(outpath) || mkdir(outpath)
     focal = rbh_res.species1[1]
     infile = path*"seqs/"*focal*".faa"
     uniqseq = unique(rbh_res.i)
-    """
-    Found $(length(uniqseq)) sequences with at least one RBH.
-    """
+    tprint("{blue}Found $length(uniqseq) sets of reciprocal best hits. Generating alignment files.{/blue}")
     p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences (default = 4). Skipping existing files.")
     @floop ThreadedEx() for i in uniqseq
         subrbh = rbh_res[rbh_res.i.==i,:]
@@ -152,7 +145,7 @@ function build_orth_files(rbh_res,path;cutoff=4)
                     #append sequence to outfile
                 end
             end
-            run(pipeline(`mafft --auto $outfile`;stdout=aligned_out))
+            run(pipeline(`mafft --quiet --auto $outfile`;stdout=aligned_out))
             run(`rm $outfile`)
         end
         next!(p)
