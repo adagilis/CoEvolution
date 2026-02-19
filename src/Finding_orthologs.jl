@@ -117,7 +117,7 @@ end
 Accepts a table that lists reciprocal best hit results and creates aligned sequence files for each set of orthologs.
 Will not output sequences when there are fewer than `cutoff` (default=4) species with the ortholog, as these will not be useful for generating branch lengths either way.
 """
-function build_orth_files(rbh_res,focal,path;cutoff=4)
+function build_orth_files(rbh_res,focal,path;cutoff=4,quiet=true)
     outpath=path*focal*"/aligned/"
     isdir(outpath) || mkdir(outpath)
     focal = rbh_res.species1[1]
@@ -135,6 +135,9 @@ function build_orth_files(rbh_res,focal,path;cutoff=4)
                 Found existing $aligned_out, skipping sequence! 
                 """
             else
+                if !quiet 
+                    tprint("{red}$i{/red}")
+                end
                 #grab sequence from species fasta
                 append_seq(i,focal,infile,outfile)
                 for orth in 1:length(subrbh.i)

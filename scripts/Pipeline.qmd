@@ -115,7 +115,7 @@ aligned_genes = filter(endswith(".aligned.fasta"),readdir(data_dir*focal*"/align
 p=Progress(length(aligned_genes),desc="Running IQTree2")
 @floop ThreadedEx() for seq in aligned_genes
     try 
-        run_iqtree(seq;path=data_dir*focal*"/trees/",mset="Q.insect,NQ.insect,LG,JTT")
+        run_iqtree(seq;path=data_dir*focal*"/trees/",model="Q.insect,NQ.insect,LG,JTT")
     catch    
     end
     next!(p)
