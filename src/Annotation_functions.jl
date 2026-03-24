@@ -116,7 +116,7 @@ Generates a set of GO terms for an ERC network, with weights relative to the ave
 """
 function go_null(GO_table)
     uniGO = unique(GO_table.GO_ID)
-    mean_scores = [mean(skipmissing(filter(:flybase=> g ->g ∈ GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
+    mean_scores = [collect(skipmissing(filter(:flybase=> g ->g ∈ GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
     return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
 end
 
