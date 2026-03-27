@@ -98,7 +98,7 @@ function ERC_GO_extend(gene_id,ERC,back_GO)
     if size(go_table) != (0,0)
         df = groupby(go_table,:GO)
         uniGO = unique(go_table.GO)
-        tests = [length(df[df.keymap[(go,)]].score) >2 && OneSampleTTest(df[df.keymap[(go,)]].score,back_GO.expected[back_dict[go]]) for go in uniGO]
+        tests = [length(df[df.keymap[(go,)]].score) >2 && TwoSampleKSTest(df[df.keymap[(go,)]].score,back_GO.expected[back_dict[go]]) for go in uniGO]
         ids = findall((!isa).(tests,Bool))
         ret = DataFrame(:GO => uniGO[ids],
             :pval=>pvalue.(tests[ids]),
@@ -116,7 +116,7 @@ Generates a set of GO terms for an ERC network, with weights relative to the ave
 """
 function go_null(GO_table)
     uniGO = unique(GO_table.GO_ID)
-    mean_scores = [mean(skipmissing(filter(:flybase=> g ->g ∈ GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
+    mean_scores = [collect(skipmissing(filter(:flybase=> g ->g ∈ GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
     return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
 end
 
