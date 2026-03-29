@@ -30,5 +30,4 @@ To locally reproduce this project, do the following:
 0. Download this code base. Notice that raw data are typically not included in the
    git-history and will need to be downloaded independently (see data download section in `Pipeline.qmd`)
 
-1. Go to `scripts/Pipeline.qmd` and follow the guide. We are working on making the code available as Julia Apps, but as those are still an experimental feature, the pipeline is the easier approach for now.
-
+1. Go to `scripts/Pipeline.qmd` and follow the guide. In final version should also be output as html hosted here, but not bothering to yet.

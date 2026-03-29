@@ -55,7 +55,7 @@ using DrWatson
 taxon = "Diptera"
 data_dir = datadir("dipterans/") #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
 #Specify the focal species for the analysis.
-focal= "D_melanogaster"
+focal= "A_aegypti"
 #Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
 outgroup_ncbi_id = "Ctenocephalides felis"
 outgroup_name = "C_felis"
@@ -144,7 +144,7 @@ ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
 
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
-genes = replace.(filter(endswith(".treefile"),readdir(data_dir*focal*"/trees/",join=false)),r".treefile"=>s"")
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
 
 ERC.i = genes[Int.(ERC.i)]
 ERC.j = genes[Int.(ERC.j)]
@@ -165,7 +165,7 @@ The chr_dict is just a quick conversion from NCBIs chr ids to something human re
 #| label: gene_table import
 include(srcdir("Annotation_functions.jl"))
 
-genes = replace.(filter(endswith(".treefile"),readdir(data_dir*focal*"/trees/",join=false)),r".treefile"=>s"")
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
 
 gene_table = DataFrame(gene=genes,
     stable_id=missings(String,length(genes)),
@@ -182,7 +182,7 @@ part_size=200
 parts = collect(Iterators.partition(genes,part_size))
 for gs in 1:length(parts)
     gene_names = copy(parts[gs])
-    subtable = find_name(gene_names,"aaegypti_gene_ensembl")
+    subtable = find_name(gene_names,"dmelanogaster_gene_ensembl")
     rows = indexin(subtable.gene,genes)
     gene_table[rows,2:8] = subtable[:,2:8]
     gene_table.num_rbh[(1:length(gene_names)).+part_size*(gs-1)] = num_rbh.(gene_names)
@@ -217,10 +217,10 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
 ```{julia}
 include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*focal*"/trees/astral_consensus_rerooted.newick")
+species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
 
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,10,1000,4,73,focal)
+trees_null = simulate_tree_set(species_tree,5,1000,4,73,focal)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 ERC_sims = ERC_sims[completecases(ERC_sims),:]
 disallowmissing!(ERC_sims)

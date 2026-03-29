@@ -47,7 +47,7 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>min_edges)
             corTest = CorrelationTest(rates_1[kept_edges],rates_2[kept_edges])
-            r = corTest.r
+            r = corTest.statistic
             fERC = fisher_trans(r,length(kept_edges))
             pval = pvalue(corTest)
         else 
