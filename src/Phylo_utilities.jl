@@ -70,7 +70,7 @@ end
     breakdown_tree(tree::Phylo) → DataFrame(bl::Float64,node::String)
 labels each branch by the node it terminates in, and returns a table with the branch name and lenght
 """
-function breakdown_tree(tree)
+function breakdown_tree(tree::Phylo)
     sum_table=DataFrame(:bl=>missings(Float64,nbranches(tree)),:node=>missings(String,nbranches(tree)))
     counter=1
     for n in getnodes(tree)
