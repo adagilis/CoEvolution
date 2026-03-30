@@ -55,7 +55,7 @@ using DrWatson
 taxon = "Diptera"
 data_dir = datadir("dipterans/") #The default place for all of the files, but give the absolute path of wherever data is meant to go otherwise.
 #Specify the focal species for the analysis.
-focal= "A_aegypti"
+focal= "D_melanogaster"
 #Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
 outgroup_ncbi_id = "Ctenocephalides felis"
 outgroup_name = "C_felis"
@@ -631,10 +631,16 @@ ggsave(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf",wi
 
 ## Expression analysis
 
-### Tissue
+### Stricter GO enrichment/annotation of unknown genes
+
+Two problems exist with our current GO analysis when it comes to individual gene enrichment. While it's true that a community might be enriched for, say, transportation genes in general, when examining individual genes, we have to account for the structure of the network. Suppose transportation genes _tend_ to have many significant edges/high fERC scores. Then, for any gene, we expect its GO results to include transportation genes. Highlighting such categories is interesting in and of itself, however, it's worth trying to ask whether for any particular gene, it co-evolves with any GO set _more_ than you would expect given how much co-evolution with that set there tends to be. To perform this analysis, we need to first create a null-expectation. Here, we loop over every GO category, find all members of that category, and extract their average fERC values. Then, for each gene and each GO category, we can ask whether the co-evolutionary signal (in terms of fERC) for that category is greater for that gene than you would expect given random chance. We do this by running a Kolmogorov Smirnov test to check if the obersved fERC distribution is different than the expected, and then running a t-test to check if the fERC values are greater than expected. (although, genes with less co-evolution with some categories than expected might be interesting in their own right). The functions to run these analyses are in the `Annotation_functions.jl` script in the `src` folder. The GO annotations are downloaded from FlyBase, while the `gene_table` object created earlier in the script is used to gauge average `fERC` values expected.
 
 ```{julia}
+include(srcdir("Annotation_functions.jl"))
+gene_table=CSV.read(data_dir*focal*"_annotated_gene_table.csv",DataFrame)
+go_cats = open_GO(data_dir*"gene_anno.gaf.gz")
 
+expected_GO = go_null(go_cats)
 
 ```
 

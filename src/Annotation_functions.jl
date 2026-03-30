@@ -111,12 +111,12 @@ function ERC_GO_extend(gene_id,ERC,back_GO)
 end
 
 """
-    go_null(GO_table,ERC) -> DataFrame(:GO_term,:expected_score)
+    go_null(GO_table) -> DataFrame(:GO_term,:expected_score)
 Generates a set of GO terms for an ERC network, with weights relative to the average ERC value for all genes with that GO term. Useful as a baseline for GO term propogation, used for t-tests later.
 """
 function go_null(GO_table)
     uniGO = unique(GO_table.GO_ID)
-    mean_scores = [collect(skipmissing(filter(:flybase=> g ->g ∈ GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
+    mean_scores = [collect(skipmissing(filter(:flybase=> g ->!ismissing(g) && g ∈  GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
     return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
 end
 
