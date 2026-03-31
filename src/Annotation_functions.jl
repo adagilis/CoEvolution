@@ -2,6 +2,7 @@ using BioMart
 using CSV
 using DataFrames
 import BioMart: Dataset, Filters, Attributes
+using MultipleTesting: adjust, BenjaminiHochberg
 
 
 """
@@ -82,11 +83,12 @@ end
 
 
 """
-    ERC_GO_extend(gene_id,ERC) -> DataFrame(:GO_term,:score,:occurence,:adjusted_score)
-Requires `gene_table` and `GO_table` to exist. For a given gene and set of evolutionary rate correlations, returns a list of GO terms of interactions partners, weighted by their co-evolutionary score. 
-Definitely needs a better approach to capture null expectation. Simplest approach would be to perform GO-enrichment among significant terms, but the current approach allows weighting by the relative ERC score, which is harder to capture with GO-enrichment.
+    ERC_GO_extend(gene_id,ERC,GO_db,gene_table;back_GO=missing) -> DataFrame(:GO_term,:score,:occurence,:adjusted_score)
+For a given gene with internal gene_id and set of evolutionary rate correlations (ERC - either full list or only significant), returns a list of GO terms of interactions partners, weighted by their co-evolutionary score. 
+Recommended to havea pre-calculated backround GO expectation (`go_null` function), as well as a table defining the GO terms for each gene (`GO_db`).
 """
-function ERC_GO_extend(gene_id,ERC,back_GO,GO_db)
+function ERC_GO_extend(gene_id,ERC,gene_table,GO_db;back_GO=missing)
+    ismissing(back_GO) && back_GO = go_null(GO_db,gene_table)
     back_dict = Dict(back_GO.GO_ID .=> 1:length(back_GO.GO_ID))
     subERC = filter([:i,:j] => (i,j) -> i==gene_id || j==gene_id,ERC)
     partners = setdiff(unique(hcat(subERC.i,subERC.j)),[gene_id])
@@ -104,18 +106,19 @@ function ERC_GO_extend(gene_id,ERC,back_GO,GO_db)
         ret = DataFrame(:GO => uniGO[ids],
             :pval=>pvalue.(MUtests[ids]),
             :exp_fERC=>mean.(back_GO.expected[[back_dict[g] for g in uniGO[ids]]]),
-            :obs_fERC=>combine(df,:score=>mean).score_mean[ids])
+            :obs_fERC=>combine(df,:score=>mean).score_mean[ids],
+            :pval_BH=>adjust(pvalue.(MUtests[ids]),BenjaminiHochberg()))
         return(sort(ret,:pval))
     else
-        return(DataFrame(:GO=>missing,:pval=>missing,:exp=>0,:obs_mean=>0))
+        return(DataFrame(:GO=>missing,:pval=>missing,:exp=>0,:obs_mean=>0,:pval_BH=>missing))
     end
 end
 
 """
-    go_null(GO_table) -> DataFrame(:GO_term,:expected_score)
+    go_null(GO_table,gene_table) -> DataFrame(:GO_term,:expected_score)
 Generates a set of GO terms for an ERC network, with weights relative to the average ERC value for all genes with that GO term. Useful as a baseline for GO term propogation, used for t-tests later.
 """
-function go_null(GO_table)
+function go_null(GO_table,gene_table)
     uniGO = unique(GO_table.GO_ID)
     mean_scores = [collect(skipmissing(filter(:flybase=> g ->!ismissing(g) && g ∈  GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
     return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
@@ -132,30 +135,34 @@ function go2gene(go,GO_table,gene_table)
 end
 
 """
-    go_background(ERC)
-Function to take a set of interaction partners and look for the frequency of GO terms in that set of genes. Creates a null of how strong/frequent different GO terms should be for any individual gene.
-"""
-function go_background(ERC)
-    genes=unique(hcat(ERC.i,ERC.j))
-    ave_ERC = [mean(filter([:i,:j] => (i,j) -> i == g || j == g,ERC).fERC) for g in genes]
-    go_table = reduce(vcat,[gene_GO(genes[x];score=ave_ERC[x]) for x in 1:length(genes)])
-    if size(go_table) != (0,0)
-        df = combine(groupby(go_table,:GO),:score=> sum,nrow=>:occurence)
-        df = df[completecases(df),:]
-        df.adjust= df.score_sum ./ df.occurence
-        return(sort(df,:adjust))
-    else
-        return(DataFrame(:GO=>missing,:score_sum=>missing,:occurence=>0,:adjust=>0))
-    end
-end
-
-
-"""
-    genes_w_GO(GO_ID) -> gene_ids
+    genes_w_GO(GO_ID,GO_table,gene_table) -> gene_ids
 function to take a GO ID and return a set of gene ids in your gene_table corresponding to that GO term. Useful for visualization.
 """
-function genes_w_GO(GO_ID)
+function genes_w_GO(GO_ID,GO_table,gene_table)
     fbids = unique(filter(:GO_ID=>gid -> gid==GO_ID,GO_table).DB_object_id)
-    gene_ids = filter(:flybase=>fid -> fid ∈ fbids,gene_table).gene
+    gene_ids = filter(:flybase=>fid -> !ismissing(fid) && fid ∈ fbids,gene_table).gene
     return(gene_ids)
+end
+
+"""
+    annotate_GO_table!(back_GO,go.obo) => back_GO_w_annotation
+    Adds name and namespace to each go term in DB, so that results are human readable/interpretable.
+"""
+function annotate_GO_table!(back_GO,go_obo)
+    ret = [fetch_name_GO(go,go_obo) for go in back_GO.GO_ID]
+    names, types = map(x->getindex.(ret,x),1:2)
+    back_GO.type .= types
+    back_GO.desc .= names
+end
+
+"""
+fetch_name_GO(go_term,go_obo)
+Given the location of an OBO file, returns what the description of a go term is and which namespace (BP,MF,CC) it's in.
+"""
+function fetch_name_GO(go_term,go_obo)
+    cmd = `grep "id: $go_term" -A 2 $go_obo`
+    ret=split(read(cmd,String),"\n")[2:3]
+    name = replace(ret[1],"name: "=>"")
+    type = replace(ret[2],"namespace: "=>"")
+    return((name,type))
 end

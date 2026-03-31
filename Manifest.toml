@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "52a82a8a769e4cc4ea25b7b7641199b8db20a3c5"
+project_hash = "cd7f60257f42ac00de0177ac33c398843c85cd00"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1425,6 +1425,12 @@ version = "2025.11.4"
 git-tree-sha1 = "cac9cc5499c25554cba55cd3c30543cff5ca4fab"
 uuid = "46d2c3a1-f734-5fdb-9937-b9b9aeba4221"
 version = "0.2.4"
+
+[[deps.MultipleTesting]]
+deps = ["Distributions", "SpecialFunctions", "StatsBase"]
+git-tree-sha1 = "1e98f8f732e7035c4333135b75605b74f3462b9b"
+uuid = "f8716d33-7c4a-5097-896f-ce0ecbd3ef6b"
+version = "0.6.0"
 
 [[deps.MultivariateStats]]
 deps = ["Arpack", "Distributions", "LinearAlgebra", "SparseArrays", "Statistics", "StatsAPI", "StatsBase"]
