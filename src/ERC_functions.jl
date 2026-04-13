@@ -93,9 +93,6 @@ function runERC_files(trees,species_tree;cutoff=5,min_shared=3,min_edges=4)
         end
         next!(p)
     end
-    #completed = length(findall(completecases(ERC_res)))
-    #data_table=hcat(["Total Pairs","Completed","Insufficient Data"],[num_comp,completed,num_comp-completed])
-    #println(Table(data_table;header=["Class","Number of Pairs"]))
     return(ERC_res)
 end
 

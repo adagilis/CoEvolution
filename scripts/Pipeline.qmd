@@ -216,6 +216,10 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 ### Finding significant edges
 
 ```{julia}
+#BH correct p-values
+using MultipleTesting
+ERC.pval_BH = adjust(ERC.pval,BenjaminiHochberg())
+
 include(srcdir("ERC_simulations.jl"))
 species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
 
@@ -236,8 +240,10 @@ ERC.null = null_cdf.(ERC.fERC)
 
 #Take only edges outside of expectation from positive sim
 gt_sims = findall(ERC.sims .>0.95)
+sig_ERC = ERC[gt_sims,:]
+#Run BH correction on resulting interactions to retain only significant
 #Now, edges that are Bonferonni significant _and_ beyond dynamic cut-off are retained further.
-sig_ERC = ERC[intersect(findall(ERC.sims .> 0.95),findall(ERC.pval .< 0.05/length(gt_sims))),:]
+sig_ERC = ERC[intersect(gt_sims,findall(ERC.pval_BH .< 0.01,:]
 
 CSV.write(data_dir*focal*"_sig_ints.csv",sig_ERC)
 ```
