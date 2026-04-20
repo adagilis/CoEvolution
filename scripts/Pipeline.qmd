@@ -15,7 +15,7 @@ This file shows how to utilize the pipeline built here to generate an ERC networ
 
 # Initializing the software, installing all dependencies.
 
-Before we run any analyses, we will require several tools. 1) Julia v 1.11+
+Before we run any analyses, we will require several tools. 1) Julia v 1.12+
 
 Once Julia is installed, run the below script:
 
@@ -65,11 +65,11 @@ include(srcdir("Phylo_utilities.jl"))
 
 # Prep data
 
-You can prepare the data in one of two ways. First, you can define the taxon of interest in the code block below and download data using our internal script. This will poll the NCBI `datasets` database to find any annotated, chromosome level assemblies within the taxon specified, download their protein sequences and gff files and place them in the data directory in the `seqs` folder.
+You can prepare the data in one of two ways. First, you can define the taxon of interest and run the code block below to download data using our internal script. This will poll the NCBI `datasets` database to find any annotated, chromosome level assemblies within the taxon specified, download their protein sequences and gff files and place them in the data directory in the `seqs` folder. Alternatively, if you already have full amino acid sequences for a set of species of interest, simply create a `seqs` folder in `data_dir` and you should be able to skip to the next step.
 
 ```{julia}
 #| label: data download
-#| 
+#| eval: false
 #SKIP THIS IF YOU ARE USING YOUR OWN DATA!
 include(srcdir("Finding_orthologs.jl"))
 isdir(data_dir) || mkdir(data_dir)
@@ -79,13 +79,15 @@ download_and_prep_sequences(outgroup_ncbi_id;level="scaffold")
 
 # Finding orthologs for focal species.
 
-We first identify orthologous sequences for all genes within the focal species. This is done in the following code block, most functions are defined in the `src\Finding_orthologs.jl` script. Fill out parameters in the blanks below to point to the correct files.
+We first identify orthologous sequences for all genes within the focal species. This is done in the following code block, most functions are defined in the `src\Finding_orthologs.jl` script. We load in a bunch of helper functions from the `ERC_functions.jl` source file as well.
 
 ```{julia}
 #| label: import ERC and Ortholog functions
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 ```
+
+The main bulk of computational time is in the below block. Detecting reciprocal best hit orthologs, creating multi-sequence alignments and then generating a tree for each alignment. Run `julia` with as many threads as you can spare, as each step is parallelized within.
 
 ```{julia}
 #| label: find orthologs
@@ -99,12 +101,16 @@ Arrow.write(data_dir*focal*"_orthologs.arrow",all_orthologs)
 
 #And if things break later, you can always load in the all_orthologs dataframe with `all_orthologs=DataFrame(Arrow.Table(data_dir*focal*"_orthologs.arrow))"`
 
-#The next step takes a while, since parallelization is doable but not recommended (mafft can take quite a bit of memory, so expect slow downs)
+#The next step takes a while, since parallelization is doable but can backfire (mafft can take quite a bit of memory, so expect slow downs)
 isdir(data_dir*focal*"/") || mkdir(data_dir*focal*"/")
 build_orth_files(all_orthologs,focal,data_dir)
+```
 
-#Finally, we generate a tree for each gene. Earlier versions we constrained the tree topology, which was faster, but does not allow us to do certain secondary analyses that we will want to, and is probably the wrong way to approach this.
+### Tree Generation
 
+Next we generate trees for each gene. Earlier versions we constrained the tree topology (and you'll find functions in `src/Phylo_utilities.jl` that are capable of doing that), but I realized more and more that this was likely leading to some false negatives in the signal for co-evolution. Currently the code is tested in IQTree2, but IQTree3 should work, and requires a simple change to the `run_iqtree` function in `src/Phylo_utilities.jl`. The end of the script generates a consensus species tree using ASTRAL. This is the only step we really need the outgroup for, as it allows for better estimates of branch lengths.
+
+```{julia}
 using FLoops
 using ProgressMeter
 
@@ -122,15 +128,15 @@ p=Progress(length(aligned_genes),desc="Running IQTree2")
 end
 
 finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
-run_astral(finished_trees)
-
+#Create consensus with ASTRAL-IV
+run_astral(finished_trees,outgroup;name=data_dir*focal*"/trees/astral.consensus.newick")
 ```
 
 ## Calculating ERC
 
 If you are using your own trees, start here!
 
-You will need two specify the species tree and the list of trees to compare.
+You will need to specify the species tree and the list of gene trees. If you have followed the pipeline so far, they are located in the `data/taxon/focal/trees` folder.
 
 ```{julia}
 #| label: ERC calculations
@@ -144,6 +150,7 @@ ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
 
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
+disallowmissing!(ERC)
 genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
 
 ERC.i = genes[Int.(ERC.i)]
@@ -157,9 +164,9 @@ ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC.arrow"))
 
 ## Gene Table Annotation and comparisons
 
-We next build a table that includes all of the gene information. This is based off of the .gff file for your reference of interest.
+We next build a table that includes all of the gene information. This is based off of the .gff file for your reference of interest. If you don't have an annotation, this *is* skippable, but helps look for any potential issues with increased signal for genes next to each other on chromosomes, etc.
 
-The chr_dict is just a quick conversion from NCBIs chr ids to something human readable - you'll have to make your own for your system. Note, we drop anything that's on an unmapped scaffold in the process, in our case 6 genes. If you have hundreds of chromosomes/scaffolds, this step can be skipped, or you can use `Julia`s ability to make Dicts iteratively.
+One element you will need to define manually is `chr_dict`. The `chr_dict` is just a quick conversion from NCBIs chr ids to something human readable - you'll have to make your own for your system. Note, we drop anything that's on an unmapped scaffold in the process, in our case 6 genes. If you have hundreds of chromosomes/scaffolds, this step can be skipped, or you can use some other approach to rename your regions.
 
 ```{julia}
 #| label: gene_table import
@@ -177,7 +184,7 @@ gene_table = DataFrame(gene=genes,
     description=missings(String,length(genes)),
     num_rbh=missings(Int64,length(genes)))
 
-#Can't query all 12k at once, split into chunks of 100
+#Can't query all 12k at once, split into chunks of 200
 part_size=200
 parts = collect(Iterators.partition(genes,part_size))
 for gs in 1:length(parts)
@@ -218,13 +225,13 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 ```{julia}
 #BH correct p-values
 using MultipleTesting
-ERC.pval_BH = adjust(ERC.pval,BenjaminiHochberg())
+ERC.pval_BY = adjust(ERC.pval,BenjaminiYekutieli())
 
 include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*"trees/astral_consensus_rerooted.newick")
+species_tree = read_tree(data_dir*focal*"/trees/astral_consensus_rerooted.newick")
 
 #Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,5,1000,4,73,focal)
+trees_null = simulate_tree_set(species_tree,10,1000,40,73,focal)
 ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
 ERC_sims = ERC_sims[completecases(ERC_sims),:]
 disallowmissing!(ERC_sims)
@@ -238,12 +245,13 @@ ERC_null.fERC = fisher_trans.(ERC_null.r,length(get_branch_lengths(species_tree)
 null_cdf = ecdf(ERC_null.fERC)
 ERC.null = null_cdf.(ERC.fERC)
 
-#Take only edges outside of expectation from positive sim
+#Take only edges outside of expectation from positive sim. No good a priori cut-off to choose here, frankly. My own feelings are that "significant" edges are only useful when comparing to some expectation, and while we build simulations to have 10X the coalescence times (and therefore highly correlated rates), how much our real data should match this expectation is unclear. We could simlate 2x or 100x coalescence times and get very different results!
 gt_sims = findall(ERC.sims .>0.95)
-sig_ERC = ERC[gt_sims,:]
-#Run BH correction on resulting interactions to retain only significant
+
+#Run BH correction on resulting interactions to retain only edges with FDR 0.001 (combinatorial explosion warrants low rates)
 #Now, edges that are Bonferonni significant _and_ beyond dynamic cut-off are retained further.
-sig_ERC = ERC[intersect(gt_sims,findall(ERC.pval_BH .< 0.01,:]
+
+
 
 CSV.write(data_dir*focal*"_sig_ints.csv",sig_ERC)
 ```
@@ -639,7 +647,7 @@ ggsave(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf",wi
 
 ### Stricter GO enrichment/annotation of unknown genes
 
-Two problems exist with our current GO analysis when it comes to individual gene enrichment. While it's true that a community might be enriched for, say, transportation genes in general, when examining individual genes, we have to account for the structure of the network. Suppose transportation genes _tend_ to have many significant edges/high fERC scores. Then, for any gene, we expect its GO results to include transportation genes. Highlighting such categories is interesting in and of itself, however, it's worth trying to ask whether for any particular gene, it co-evolves with any GO set _more_ than you would expect given how much co-evolution with that set there tends to be. To perform this analysis, we need to first create a null-expectation. Here, we loop over every GO category, find all members of that category, and extract their average fERC values. Then, for each gene and each GO category, we can ask whether the co-evolutionary signal (in terms of fERC) for that category is greater for that gene than you would expect given random chance. We do this by running a Kolmogorov Smirnov test to check if the obersved fERC distribution is different than the expected, and then running a t-test to check if the fERC values are greater than expected. (although, genes with less co-evolution with some categories than expected might be interesting in their own right). The functions to run these analyses are in the `Annotation_functions.jl` script in the `src` folder. The GO annotations are downloaded from FlyBase, while the `gene_table` object created earlier in the script is used to gauge average `fERC` values expected.
+Two problems exist with our current GO analysis when it comes to individual gene enrichment. While it's true that a community might be enriched for, say, transportation genes in general, when examining individual genes, we have to account for the structure of the network. Suppose transportation genes *tend* to have many significant edges/high fERC scores. Then, for any gene, we expect its GO results to include transportation genes. Highlighting such categories is interesting in and of itself, however, it's worth trying to ask whether for any particular gene, it co-evolves with any GO set *more* than you would expect given how much co-evolution with that set there tends to be. To perform this analysis, we need to first create a null-expectation. Here, we loop over every GO category, find all members of that category, and extract their average fERC values. Then, for each gene and each GO category, we can ask whether the co-evolutionary signal (in terms of fERC) for that category is greater for that gene than you would expect given random chance. We do this by running a Kolmogorov Smirnov test to check if the obersved fERC distribution is different than the expected, and then running a t-test to check if the fERC values are greater than expected. (although, genes with less co-evolution with some categories than expected might be interesting in their own right). The functions to run these analyses are in the `Annotation_functions.jl` script in the `src` folder. The GO annotations are downloaded from FlyBase, while the `gene_table` object created earlier in the script is used to gauge average `fERC` values expected.
 
 ```{julia}
 include(srcdir("Annotation_functions.jl"))
