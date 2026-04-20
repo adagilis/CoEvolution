@@ -129,7 +129,7 @@ end
 
 finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
 #Create consensus with ASTRAL-IV
-run_astral(finished_trees,outgroup;name=data_dir*focal*"/trees/astral.consensus.newick")
+run_astral(finished_trees,outgroup)
 ```
 
 ## Calculating ERC

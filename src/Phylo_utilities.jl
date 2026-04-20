@@ -104,6 +104,7 @@ end
     run_astral(trees) -> ASTRAL4 consensus tree
 """
 function run_astral(trees,outgroup;name="astral_consensus.newick")
+    treefile=tempname()
     for t in trees
         run(pipeline(`cat $t`,stdout=treefile,append=true))
     end
