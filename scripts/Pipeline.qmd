@@ -1,6 +1,6 @@
 ---
 title: "Pipeline example"
-format: html
+format: pdf
 engine: julia
 execute:
     echo: true
@@ -128,9 +128,13 @@ p=Progress(length(aligned_genes),desc="Running IQTree2")
     next!(p)
 end
 
-finished_trees = filter(endswith(".treefile"),readdir(data_dir*"trees/",join=true))
+finished_trees = filter(endswith(".treefile"),readdir(data_dir*focal*"/trees/",join=true))
 #Create consensus with ASTRAL-IV
 run_astral(finished_trees,outgroup)
+#Reroot in R to focal
+tree_loc =data_dir*focal*"trees/astral_consensus_rerooted.newick"
+cmd=`sed -i "s/)[0-1]\.[0-9]*:/):/g" $tree_loc`
+run(cmd)
 ```
 
 ## Calculating ERC
@@ -523,17 +527,12 @@ sig_ERC = read_csv("data/dipterans/D_melanogaster_sig_ints.csv")
 edges = c(apply(sig_ERC,1,function(x) c(x[1],x[2])))
 graph = make_graph(edges,directed=FALSE)
 
-weights = sig_ERC$fERC
-weights = weights - min(weights)
-weights = weights / max(weights)
-E(graph)$weight = weights
-
 #Identify only larges connected component
 comps = components(graph)
 drop = names(comps$membership)[which(comps$membership != 1)]
 subgraph = delete_vertices(graph,drop)
 
-comms = cluster_leiden(subgraph,objective_function="modularity",resolution=1.5,n_iterations=10000)
+comms = cluster_leiden(subgraph,objective_function="modularity",resolution=1,n_iterations=1000,weights=NA)
                 
 comms$membership = match(1:max(comms$membership),order(table(comms$membership),decreasing=TRUE))[comms$membership]
 
@@ -605,7 +604,7 @@ genes=gsub(".treefile","",list.files("data/dipterans/D_melanogaster/trees",patte
 stable_genes = sapply(genes,function(x) gene_table$stable_id[which(gene_table$gene == x)][1])
 stable_EGs = mapIds(org.Dm.eg.db,keys=stable_genes,column="ENTREZID",keytype="FLYBASE",multiVals="first")           
                       
-gostres = gost(cs[-11],organism="dmelanogaster",custom_bg=names(stable_EGs),ordered_query=FALSE,highlight = TRUE)
+gostres = gost(cs,organism="dmelanogaster",custom_bg=names(stable_EGs),ordered_query=FALSE,highlight = TRUE)
 write_csv(gostres$result,file="data/dipterans/D_melanogaster_fullGOProfiler.csv")
 #After inspection of results, we chose some top terms to highlight for export tables, each table saved seperately
 
@@ -618,20 +617,6 @@ emmap_cluster = function(gene_list,cats=30) {
     edo = pairwise_termsim(ego)
     return(emapplot(edo,showCategory=cats))
 }
-
-
-gene_predict = function(gene) {
-    subERC = subset(sig_ERC,i==gene | j == gene)
-    partners = setdiff(union(subERC$i,subERC$j),gene)
-    partner_ids = gene_table$stable_id[match(partners,gene_table$gene)]
-    return(enrichGO(partner_ids,keyType="FLYBASE",
-                   OrgDb = org.Dm.eg.db,
-                   universe = gene_table$stable_id,
-                   ont="ALL",
-                   pvalueCutoff=0.01,
-                   pAdjustMethod="BH"))
-}
-
                               
 #Figure SX
 obs = table(sig_ERC$chr_combo)
@@ -669,7 +654,7 @@ ggsave(chr_plot,file="data/dipterans/plots/D_melanogaster_chr_enrichment.pdf",wi
 
 ### Stricter GO enrichment/annotation of unknown genes
 
-Two problems exist with our current GO analysis when it comes to individual gene enrichment. While it's true that a community might be enriched for, say, transportation genes in general, when examining individual genes, we have to account for the structure of the network. Suppose transportation genes *tend* to have many significant edges/high fERC scores. Then, for any gene, we expect its GO results to include transportation genes. Highlighting such categories is interesting in and of itself, however, it's worth trying to ask whether for any particular gene, it co-evolves with any GO set *more* than you would expect given how much co-evolution with that set there tends to be. To perform this analysis, we need to first create a null-expectation. Here, we loop over every GO category, find all members of that category, and extract their average fERC values. Then, for each gene and each GO category, we can ask whether the co-evolutionary signal (in terms of fERC) for that category is greater for that gene than you would expect given random chance. We do this by running a Kolmogorov Smirnov test to check if the obersved fERC distribution is different than the expected, and then running a t-test to check if the fERC values are greater than expected. (although, genes with less co-evolution with some categories than expected might be interesting in their own right). The functions to run these analyses are in the `Annotation_functions.jl` script in the `src` folder. The GO annotations are downloaded from FlyBase, while the `gene_table` object created earlier in the script is used to gauge average `fERC` values expected.
+Two problems exist with our current GO analysis when it comes to individual gene enrichment. While it's true that a community might be enriched for, say, transportation genes in general, when examining individual genes, we have to account for the structure of the network. Suppose transportation genes *tend* to have many significant edges/high fERC scores. Then, for any gene, we expect its GO results to include transportation genes. Highlighting such categories is interesting in and of itself, however, it's worth trying to ask whether for any particular gene, it co-evolves with any GO set *more* than you would expect given how much co-evolution with that set there tends to be. To perform this analysis, we need to first create a null-expectation. Here, we loop over every GO category, find all members of that category, and extract their average fERC values. Then, for each gene and each GO category, we can ask whether the co-evolutionary signal (in terms of fERC) for that category is greater for that gene than you would expect given random chance. We do this by running a Kolmogorov Smirnov test to check if the observed fERC distribution is different than the expected, and then running a t-test to check if the fERC values are greater than expected. (although, genes with less co-evolution with some categories than expected might be interesting in their own right). The functions to run these analyses are in the `Annotation_functions.jl` script in the `src` folder. The GO annotations are downloaded from FlyBase, while the `gene_table` object created earlier in the script is used to gauge average `fERC` values expected.
 
 ```{julia}
 include(srcdir("Annotation_functions.jl"))
@@ -683,86 +668,15 @@ annotate_GO_table!(expected_GO,"data/dipterans/go.obo")
 for g in gene_table.gene
     res = ERC_GO_extend(g,ERC,gene_table,go_cats,expected_GO)
     res = subset(res,:pval_BH => p-> p .< 0.05)
-    res.diff = res.obs_fERC .- res.exp_fERC
-    sort!(res,:diff)
-    CSV.write("data/dipterans/D_melanogaster/gene_enrichment/"*g*".csv",res)
-end
-```
-
-### Timing
-
-## STRING database
-
-The STRING database contains links between genes based on a variety of metrics. Here, we compare the co-evolution scores versus the STRING score, to see at what cut-off we are reaching all likely interactions.
-
-```{julia}
-
-string_db = CSV.read("data/dipterans/String_dmel.detailed.v12.0.txt",DataFrame)
-string_alias = CSV.read("data/dipterans/String_dmel_protein_info.txt",DataFrame)
-
-
-idx = indexin(gene_table.gene,string_alias.alias)
-idx = replace(idx,nothing => missing)
-gene_table.string_id = missings(String31,length(gene_table.gene))
-gene_table.string_id[findall((!ismissing).(idx))] = string_alias.var"#string_protein_id"[idx[findall((!ismissing).(idx))]]
-
-string_db.id1 = indexin(string_db.protein1,gene_table.string_id)
-string_db.id2 = indexin(string_db.protein2,gene_table.string_id)
-idx = intersect(findall((!isnothing).(string_db.id1)),findall((!isnothing).(string_db.id2)))
-string_db = string_db[idx,:]
-string_db.gid = [join(sort([gene_table.gene[x.id1],gene_table.gene[x.id2]]),"_") for x in eachrow(string_db)]
-
-
-joint_tab = innerjoin(sig_ERC,string_db,on=:gid)
-```
-
-## Converting to a similarity matrix
-
-For several types of analyses, we need to convert the long ERC output to a wide format in order to calculate similarity matrices.
-
-```{julia}
-using Tables
-fERC_mat = missings(Float64,length(genes),length(genes))
-for i in 1472:(length(genes)-1)
-    idx_i_1 = findall(ERC.i .== gene_table.gene[i])
-    idx_i_2 = findall(ERC.j .== gene_table.gene[i])
-    for j in (i+1):length(genes)
-        idx = union(findall(ERC.j[idx_i_1] .== gene_table.gene[j]),findall(ERC.i[idx_i_2] .== gene_table.gene[j]))
-        if length(idx) == 1
-            fERC_mat[i,j] = ERC.fERC[idx][1]
-            fERC_mat[j,i] = ERC.fERC[idx][1]
-        end
+    if !ismissing(res.pval)
+        res.diff = res.obs_fERC .- res.exp_fERC
+        sort!(res,:diff) 
+        CSV.write("data/dipterans/D_melanogaster/gene_enrichment/"*g*".csv",res)
     end
 end
-
-CSV.write(data_dir*focal*"_fERC_matrix.tsv",Tables.table(fERC_mat),writeheader=false)
-
-genes2 = union(sig_ERC.i,sig_ERC.j)
-sig_mat = zeros(Float64,length(genes2),length(genes2))
-
-for i in 1:(length(genes2)-1)
-    idx_i_1 = findall(sig_ERC.i .== genes2[i])
-    idx_i_2 = findall(sig_ERC.j .== genes2[i])
-    for j in (i+1):length(genes2)
-        idx = union(findall(sig_ERC.j[idx_i_1] .== genes2[j]),findall(sig_ERC.i[idx_i_2] .== genes2[j]))
-        if length(idx) == 1
-            sig_mat[i,j] = sig_ERC.fERC[idx][1]
-            sig_mat[j,i] = sig_ERC.fERC[idx][1]
-        end
-    end
-end
-
-CSV.write(data_dir*focal*"_sigERC_matrix.tsv",Tables.table(sig_mat),writeheader=false)
-
 ```
 
-```{julia}
-#tree cleaning for julia to read in
-
-tree_loc ="data/dipterans/D_melanogaster/trees/comm_1.newick"
-cmd=`sed -i "s/)[0-1]\.[0-9]*:/):/g" $tree_loc`
-run(cmd)
-```
+## Specificity figure
 
 ```{julia}
 
@@ -770,7 +684,6 @@ id_i = indexin(ERC.i,gene_table.gene)
 id_j = indexin(ERC.j,gene_table.gene)
 
 cor_fERC = 2 .* ERC.fERC .- gene_table.mean_fERC[id_i]-gene_table.mean_fERC[id_j]
-
 
 
 points = [Point3f(pos_map1[x],pos_map2[x],cor_fERC[x]) for x in 1:length(pos_map1)]

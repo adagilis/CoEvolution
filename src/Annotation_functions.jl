@@ -106,9 +106,9 @@ function ERC_GO_extend(gene_id,ERC,gene_table,GO_db,back_GO)
             :pval=>pvalue.(MUtests[ids]),
             :exp_fERC=>mean.(back_GO.expected[[back_dict[g] for g in uniGO[ids]]]),
             :obs_fERC=>combine(df,:score=>mean).score_mean[ids],
-            :pval_BH=>adjust(pvalue.(MUtests[ids]),BenjaminiHochberg())),
+            :pval_BH=>adjust(pvalue.(MUtests[ids]),BenjaminiHochberg()),
             :type=>back_GO.type[[back_dict[g] for g in uniGO[ids]]],
-            :description=>back_GO.desc[[back_dict[g] for g in uniGO[ids]]]
+            :description=>back_GO.desc[[back_dict[g] for g in uniGO[ids]]])
         return(sort(ret,:pval))
     else
         return(DataFrame(:GO_ID=>missing,:pval=>missing,:exp=>0,:obs_mean=>0,:pval_BH=>missing,:type=>missing,:desc=>missing))
