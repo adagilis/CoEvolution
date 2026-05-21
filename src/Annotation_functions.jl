@@ -87,8 +87,7 @@ end
 For a given gene with internal gene_id and set of evolutionary rate correlations (ERC - either full list or only significant), returns a list of GO terms of interactions partners, weighted by their co-evolutionary score. 
 Recommended to havea pre-calculated backround GO expectation (`go_null` function), as well as a table defining the GO terms for each gene (`GO_db`).
 """
-function ERC_GO_extend(gene_id,ERC,gene_table,GO_db;back_GO=missing)
-    ismissing(back_GO) && back_GO = go_null(GO_db,gene_table)
+function ERC_GO_extend(gene_id,ERC,gene_table,GO_db,back_GO)
     back_dict = Dict(back_GO.GO_ID .=> 1:length(back_GO.GO_ID))
     subERC = filter([:i,:j] => (i,j) -> i==gene_id || j==gene_id,ERC)
     partners = setdiff(unique(hcat(subERC.i,subERC.j)),[gene_id])
@@ -103,14 +102,14 @@ function ERC_GO_extend(gene_id,ERC,gene_table,GO_db;back_GO=missing)
         uniGO = unique(go_table.GO)
         MUtests = [length(df[df.keymap[(go,)]].score) >2 && MannWhitneyUTest(df[df.keymap[(go,)]].score,back_GO.expected[back_dict[go]]) for go in uniGO]
         ids = findall((!isa).(MUtests,Bool))
-        ret = DataFrame(:GO => uniGO[ids],
+        ret = DataFrame(:GO_ID => uniGO[ids],
             :pval=>pvalue.(MUtests[ids]),
             :exp_fERC=>mean.(back_GO.expected[[back_dict[g] for g in uniGO[ids]]]),
             :obs_fERC=>combine(df,:score=>mean).score_mean[ids],
             :pval_BH=>adjust(pvalue.(MUtests[ids]),BenjaminiHochberg()))
         return(sort(ret,:pval))
     else
-        return(DataFrame(:GO=>missing,:pval=>missing,:exp=>0,:obs_mean=>0,:pval_BH=>missing))
+        return(DataFrame(:GO_ID=>missing,:pval=>missing,:exp=>0,:obs_mean=>0,:pval_BH=>missing))
     end
 end
 
@@ -120,7 +119,7 @@ Generates a set of GO terms for an ERC network, with weights relative to the ave
 """
 function go_null(GO_table,gene_table)
     uniGO = unique(GO_table.GO_ID)
-    mean_scores = [collect(skipmissing(filter(:flybase=> g ->!ismissing(g) && g ∈  GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
+    mean_scores = [filter(isfinite,collect(skipmissing(filter(:flybase=> g ->!ismissing(g) && g ∈  GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC))) for GO in uniGO]
     return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
 end
 
@@ -129,7 +128,7 @@ end
 Return the gene ids for all genes in any GO category. Useful to plot GO categories across the network.
 """
 function go2gene(go,GO_table,gene_table)
-    fbids = filter(:GO=>g->g==go,GO_table).DB_object_id
+    fbids = filter(:GO_ID=>g->g==go,GO_table).DB_object_id
     geneids = filter(:flybase=>fb-> fb ∈ fbids,gene_table).gene
     return(geneids)
 end
