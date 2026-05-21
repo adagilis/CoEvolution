@@ -58,7 +58,7 @@ data_dir = datadir("dipterans/") #The default place for all of the files, but gi
 focal= "D_melanogaster"
 #Specify an outgroup - necessary for ASTRAL-IV to adequately make a species tree.
 outgroup_ncbi_id = "Ctenocephalides felis"
-outgroup_name = "C_felis"
+outgroup = "C_felis"
 include(srcdir("Stats_utilities.jl"))
 include(srcdir("Phylo_utilities.jl"))
 ```
@@ -82,7 +82,7 @@ download_and_prep_sequences(outgroup_ncbi_id;level="scaffold")
 We first identify orthologous sequences for all genes within the focal species. This is done in the following code block, most functions are defined in the `src\Finding_orthologs.jl` script. We load in a bunch of helper functions from the `ERC_functions.jl` source file as well.
 
 ```{julia}
-#| label: import ERC and Ortholog functions
+#| label: CoreFunctionImport
 include(srcdir("Finding_orthologs.jl"))
 include(srcdir("ERC_functions.jl"))
 ```
@@ -111,6 +111,7 @@ build_orth_files(all_orthologs,focal,data_dir)
 Next we generate trees for each gene. Earlier versions we constrained the tree topology (and you'll find functions in `src/Phylo_utilities.jl` that are capable of doing that), but I realized more and more that this was likely leading to some false negatives in the signal for co-evolution. Currently the code is tested in IQTree2, but IQTree3 should work, and requires a simple change to the `run_iqtree` function in `src/Phylo_utilities.jl`. The end of the script generates a consensus species tree using ASTRAL. This is the only step we really need the outgroup for, as it allows for better estimates of branch lengths.
 
 ```{julia}
+#| label: Tree Generation
 using FLoops
 using ProgressMeter
 
@@ -151,7 +152,7 @@ ERC = runERC_collection(trees,species_tree;cutoff=5,min_shared=4)
 #Drop cases with missing data 
 ERC = ERC[findall(completecases(ERC)),:]
 disallowmissing!(ERC)
-genes = replace.(filter(endswith(".treefile"),readdir(data_dir*"trees/",join=false)),r".treefile"=>s"")
+genes = replace.(filter(endswith(".treefile"),readdir(data_dir*focal*"/trees/",join=false)),r".treefile"=>s"")
 
 ERC.i = genes[Int.(ERC.i)]
 ERC.j = genes[Int.(ERC.j)]
@@ -223,7 +224,7 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 ### Finding significant edges
 
 ```{julia}
-#BH correct p-values
+#BY correct p-values
 using MultipleTesting
 ERC.pval_BY = adjust(ERC.pval,BenjaminiYekutieli())
 
@@ -532,11 +533,45 @@ comps = components(graph)
 drop = names(comps$membership)[which(comps$membership != 1)]
 subgraph = delete_vertices(graph,drop)
 
-comms = cluster_leiden(subgraph,objective_function="modularity",resolution=1,weights = E(subgraph)$weight,n_iterations=10000)
+comms = cluster_leiden(subgraph,objective_function="modularity",resolution=1.5,n_iterations=10000)
                 
 comms$membership = match(1:max(comms$membership),order(table(comms$membership),decreasing=TRUE))[comms$membership]
 
 write_tsv(data.frame(name=comms$names,community=comms$membership),file="data/dipterans/D_melanogaster_communities.tsv")
+```
+
+Now, some quick code to analyze the gene trees of each community:
+
+```{julia}
+comms = CSV.read("data/dipterans/D_melanogaster_communities.tsv",DataFrame)
+
+##make Astral consensus trees
+
+## Remove support values so we can read them in
+
+## Read in trees
+spectre = read_tree("data/dipterans/D_melanogaster/trees/astral_consensus.newick")
+comm_trees = [read_tree("data/dipterans/D_melanogaster/trees/comm_$x.newick") for x in 1:5]
+main_table = breakdown_tree(spectre)
+tables = [breakdown_tree(comm_trees[x]) for x in 1:5]
+for x in 1:5
+    rename!(tables[x],:bl=>"scaled_$x")
+    main_table = leftjoin(main_table,tables[x],on=:node)
+    main_table[:,"scaled_$x"] = main_table[:,"scaled_$x"] ./ main_table.bl
+end
+
+CSV.write("data/dipterans/D_melanogaster/trees/rescaled.table",main_table)
+
+#This makes a table where the species tree branches are colored by a scale of how rapidly thet evolved in each community's consensus. And missing branches are left grey, code in R to follow
+
+```
+
+And then we plot in R (because ggtree is nice)
+
+```{r}
+library(ggtree)
+library(readr)
+species_tree = read.tree("data/dipterans/D_mela")
 ```
 
 ## GO analysis
@@ -544,20 +579,20 @@ write_tsv(data.frame(name=comms$names,community=comms$membership),file="data/dip
 The resulting communities are examined for GO category enrichment. The easiest approach here is to use `gprofiler2`, which has a nice implementation in R, so once again we'll step out of Julia for a bit, using `RCall` to make the calls from inside julia. You will need `R` and `gprofiler2` installed for this to work. Alternatively, you can run the analysis in `R`, but it will require some data transfer
 
 ```{r}
+require(readr)
 require(gprofiler2)
 require(ggplot2)
 require(GOSemSim)
 require(org.Dm.eg.db)
 require(clusterProfiler)
-require(emmapplot)
 require(enrichplot)
 
 
 gene_table = read_csv("data/dipterans/D_melanogaster_annotated_gene_table.csv")
 #Five major clusters
-big_comms = which(table(comms$membership)>50)
+big_comms = which(table(comms$community)>100)
 cs = lapply(1:length(big_comms),function(x){
-    genes = comms$names[which(comms$membership == x)]
+    genes = comms$name[which(comms$community == x)]
     idx = match(genes,gene_table$gene)
     stable_ids = gene_table$stable_id[idx]
     stable_ids = stable_ids[!is.na(stable_ids)]
@@ -566,33 +601,20 @@ cs = lapply(1:length(big_comms),function(x){
 })
 names(cs) = sapply(1:length(big_comms),function(x) paste("comm_",x,sep=""))
 
-genes=gsub(".treefile","",list.files("data/dipterans/trees",pattern=".treefile"))
+genes=gsub(".treefile","",list.files("data/dipterans/D_melanogaster/trees",pattern=".treefile"))
 stable_genes = sapply(genes,function(x) gene_table$stable_id[which(gene_table$gene == x)][1])
 stable_EGs = mapIds(org.Dm.eg.db,keys=stable_genes,column="ENTREZID",keytype="FLYBASE",multiVals="first")           
                       
-gostres = gost(cs,organism="dmelanogaster",custom_bg=genes,ordered_query=FALSE,highlight = TRUE)
+gostres = gost(cs[-11],organism="dmelanogaster",custom_bg=names(stable_EGs),ordered_query=FALSE,highlight = TRUE)
 write_csv(gostres$result,file="data/dipterans/D_melanogaster_fullGOProfiler.csv")
 #After inspection of results, we chose some top terms to highlight for export tables, each table saved seperately
 
 highlighted = gostres$result[which(gostres$result$highlighted),]
 write_csv(highlighted,file="data/dipterans/D_melanogaster_highlighted.csv")
 
-gene_table$community = sapply(gene_table$gene,function(x) comms$membership[which(comms$name==x)][1])
-                                                     
-gene_table$comm_degree = NA
-#Annotate by degree w/in community
-for( x in 1:length(big_comms)) {
-    idx = which(gene_table$community == big_comms[x])
-    subERC = subset(sig_ERC,i %in% gene_table$gene[idx] & j %in% gene_table$gene[idx])
-    for(i in 1:length(gene_table$gene[idx])){
-        gene_table$comm_degree[idx][i] = length(union(which(subERC$i == gene_table$gene[idx][i]),which(subERC$j == gene_table$gene[idx][i])))
-    }
-}
-
-write_csv(gene_table,"data/dipterans/D_melanogaster_annotated_gene_table.csv")
 
 emmap_cluster = function(gene_list,cats=30) {
-    ego = enrichGO(gene=gene_list,universe=as.character(stable_EGs),OrgDb=org.Dm.eg.db,ont="BP",pAdjustMethod="BH",pvalueCutoff=0.01,readable=TRUE)
+    ego = enrichGO(gene=gene_list,universe=as.character(stable_EGs),OrgDb=org.Dm.eg.db,ont="BP",pAdjustMethod="BH",pvalueCutoff=0.05,readable=TRUE)
     edo = pairwise_termsim(ego)
     return(emapplot(edo,showCategory=cats))
 }
@@ -655,7 +677,16 @@ gene_table=CSV.read(data_dir*focal*"_annotated_gene_table.csv",DataFrame)
 go_cats = open_GO(data_dir*"gene_anno.gaf.gz")
 
 expected_GO = go_null(go_cats)
-
+#add descriptions to go terms
+annotate_GO_table!(expected_GO,"data/dipterans/go.obo")
+#And now generate per-gene results
+for g in gene_table.gene
+    res = ERC_GO_extend(g,ERC,gene_table,go_cats,expected_GO)
+    res = subset(res,:pval_BH => p-> p .< 0.05)
+    res.diff = res.obs_fERC .- res.exp_fERC
+    sort!(res,:diff)
+    CSV.write("data/dipterans/D_melanogaster/gene_enrichment/"*g*".csv",res)
+end
 ```
 
 ### Timing
@@ -723,4 +754,47 @@ end
 
 CSV.write(data_dir*focal*"_sigERC_matrix.tsv",Tables.table(sig_mat),writeheader=false)
 
+```
+
+```{julia}
+#tree cleaning for julia to read in
+
+tree_loc ="data/dipterans/D_melanogaster/trees/comm_1.newick"
+cmd=`sed -i "s/)[0-1]\.[0-9]*:/):/g" $tree_loc`
+run(cmd)
+```
+
+```{julia}
+
+id_i = indexin(ERC.i,gene_table.gene)
+id_j = indexin(ERC.j,gene_table.gene)
+
+cor_fERC = 2 .* ERC.fERC .- gene_table.mean_fERC[id_i]-gene_table.mean_fERC[id_j]
+
+
+
+points = [Point3f(pos_map1[x],pos_map2[x],cor_fERC[x]) for x in 1:length(pos_map1)]
+fig = Figure()
+#Genome-wide interaction plot
+ax2 = Axis(fig[2,1], 
+    xminorticks=chr_lines,
+    yminorticks=chr_lines,
+    xticksize=0,
+    yticksize=0,
+    xminorticksvisible=true,
+    yminorticksvisible=true,
+    yminorgridvisible=true,
+    yminorgridcolor=RGBAf(0,0,0,0.25),
+    ygridcolor=RGBAf(0,0,0,0),
+    xminorgridvisible=true,
+    xminorgridcolor=RGBAf(0,0,0,0.25),
+    xgridcolor=RGBAf(0,0,0,0),
+    xlabel="Position",
+    ylabel="Position",
+    xticks=chr_ticks,
+    yticks=chr_ticks
+)
+ds = datashader!(ax2,points,agg=Makie.AggMean(),operation=identity,colormap=reverse(diverging_palette(0,200,32,mid=0.65)))
+Colorbar(fig[1,1],ds,vertical=false,label=L"2fERC_{i,j}-\overline{fERC_{i}}-\overline{fERC_{j}}")
+rowgap!(fig.layout,0)
 ```
