@@ -167,5 +167,3 @@ function fetch_name_GO(go_term,go_obo)
     type = replace(ret[2],"namespace: "=>"")
     return((name,type))
 end
-
-

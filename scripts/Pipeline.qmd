@@ -1,4 +1,5 @@
 ---
+','---
 title: "Pipeline example"
 format: pdf
 engine: julia
@@ -665,20 +666,33 @@ expected_GO = go_null(go_cats)
 #add descriptions to go terms
 annotate_GO_table!(expected_GO,"data/dipterans/go.obo")
 #And now generate per-gene results
-for g in gene_table.gene
+using FLoops, ProgressMeter
+
+
+done = replace.(readdir(data_dir*focal*"/gene_enrichment/"),".csv"=>"")
+todo = setdiff(gene_table.gene,done)
+p=Progress(length(todo),desc="gene reports")
+@floop ThreadedEx() for g in todo
     res = ERC_GO_extend(g,ERC,gene_table,go_cats,expected_GO)
-    res = subset(res,:pval_BH => p-> p .< 0.05)
-    if !ismissing(res.pval)
+    if length(collect(skipmissing(res.pval))) > 0
+        res = subset(res,:pval_BH => p-> p .< 0.05)
         res.diff = res.obs_fERC .- res.exp_fERC
         sort!(res,:diff) 
         CSV.write("data/dipterans/D_melanogaster/gene_enrichment/"*g*".csv",res)
     end
+    next!(p)
 end
 ```
 
 ## Specificity figure
 
 ```{julia}
+
+#The idea is to calculate a value that is \spec_ij = \quantile(fERC_i,fERC_ij) * \quantile(fERC_i,fERC_ij)
+#To do this efficiently, we want to have a quick function that, given two quantiles returns the combined prob
+function spec(erc_val,i,j,vals)
+   return(length(findall(vals[i].<erc_val))/length(vals[i])*length(findall(vals[j].<erc_val))/length(vals[j]))
+end
 
 id_i = indexin(ERC.i,gene_table.gene)
 id_j = indexin(ERC.j,gene_table.gene)
