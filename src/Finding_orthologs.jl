@@ -123,7 +123,7 @@ function build_orth_files(rbh_res,focal,path;cutoff=4,quiet=true)
     focal = rbh_res.species1[1]
     infile = path*"seqs/"*focal*".faa"
     uniqseq = unique(rbh_res.i)
-    tprint("{blue}Found $length(uniqseq) sets of reciprocal best hits. Generating alignment files.{/blue}")
+    tprint("{blue}Found $(length(uniqseq)) sets of reciprocal best hits. Generating alignment files.{/blue}")
     p=Progress(length(uniqseq),desc="Aligning files with sufficient sequences (default = 4). Skipping existing files.")
     @floop ThreadedEx() for i in uniqseq
         subrbh = rbh_res[rbh_res.i.==i,:]
