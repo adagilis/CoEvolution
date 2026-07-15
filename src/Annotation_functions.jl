@@ -16,7 +16,6 @@ function find_name(gene,dataset)
             "refseq_peptide",
             "ensembl_gene_id",
             "external_gene_name",
-            "flybase_gene_id",
             "chromosome_name",
             "start_position",
             "end_position",
@@ -26,7 +25,6 @@ function find_name(gene,dataset)
     rename!(res,:var"RefSeq peptide ID"=>:gene,
                 :var"Gene stable ID"=>:stable_id,
                 :var"Gene name"=>:name,
-                :var"FlyBase gene ID"=>:flybase,
                 :var"Chromosome/scaffold name"=>:chr,
                 :var"Gene start (bp)"=>:pos_1,
                 :var"Gene end (bp)"=>:pos_2,
@@ -38,7 +36,7 @@ end
     num_rbh(gene) -> number of taxon in tree for a gene
 """
 function num_rbh(gene)
-    length(getleafnames(read_tree(data_dir*"trees/"*gene*".treefile")))
+    length(getleafnames(read_tree(data_dir*focal*"/trees/"*gene*".treefile")))
 end
 
 """
@@ -87,8 +85,7 @@ end
 For a given gene with internal gene_id and set of evolutionary rate correlations (ERC - either full list or only significant), returns a list of GO terms of interactions partners, weighted by their co-evolutionary score. 
 Recommended to havea pre-calculated backround GO expectation (`go_null` function), as well as a table defining the GO terms for each gene (`GO_db`).
 """
-function ERC_GO_extend(gene_id,ERC,gene_table,GO_db;back_GO=missing)
-    ismissing(back_GO) && back_GO = go_null(GO_db,gene_table)
+function ERC_GO_extend(gene_id,ERC,gene_table,GO_db,back_GO)
     back_dict = Dict(back_GO.GO_ID .=> 1:length(back_GO.GO_ID))
     subERC = filter([:i,:j] => (i,j) -> i==gene_id || j==gene_id,ERC)
     partners = setdiff(unique(hcat(subERC.i,subERC.j)),[gene_id])
