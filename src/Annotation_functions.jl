@@ -16,7 +16,6 @@ function find_name(gene,dataset)
             "refseq_peptide",
             "ensembl_gene_id",
             "external_gene_name",
-            "flybase_gene_id",
             "chromosome_name",
             "start_position",
             "end_position",
@@ -26,7 +25,6 @@ function find_name(gene,dataset)
     rename!(res,:var"RefSeq peptide ID"=>:gene,
                 :var"Gene stable ID"=>:stable_id,
                 :var"Gene name"=>:name,
-                :var"FlyBase gene ID"=>:flybase,
                 :var"Chromosome/scaffold name"=>:chr,
                 :var"Gene start (bp)"=>:pos_1,
                 :var"Gene end (bp)"=>:pos_2,
@@ -38,7 +36,7 @@ end
     num_rbh(gene) -> number of taxon in tree for a gene
 """
 function num_rbh(gene)
-    length(getleafnames(read_tree(data_dir*"trees/"*gene*".treefile")))
+    length(getleafnames(read_tree(data_dir*focal*"/trees/"*gene*".treefile")))
 end
 
 """
@@ -167,5 +165,3 @@ function fetch_name_GO(go_term,go_obo)
     type = replace(ret[2],"namespace: "=>"")
     return((name,type))
 end
-
-

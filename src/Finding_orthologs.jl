@@ -119,6 +119,8 @@ Will not output sequences when there are fewer than `cutoff` (default=4) species
 """
 function build_orth_files(rbh_res,focal,path;cutoff=4,quiet=true)
     outpath=path*focal*"/aligned/"
+    #Clean up from previous failed runs, just in case. Deletes all 0 size files
+    run(`find $outpath -size 0b -delete`)
     isdir(outpath) || mkdir(outpath)
     focal = rbh_res.species1[1]
     infile = path*"seqs/"*focal*".faa"
@@ -147,9 +149,9 @@ function build_orth_files(rbh_res,focal,path;cutoff=4,quiet=true)
                     append_seq(seq_name,species_name,species_file,outfile)
                     #append sequence to outfile
                 end
+            	run(pipeline(`mafft --anysymbol --quiet --auto $outfile`;stdout=aligned_out))
+            	run(`rm $outfile`)
             end
-            run(pipeline(`mafft --quiet --auto $outfile`;stdout=aligned_out))
-            run(`rm $outfile`)
         end
         next!(p)
     end
