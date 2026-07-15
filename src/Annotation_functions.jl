@@ -100,14 +100,16 @@ function ERC_GO_extend(gene_id,ERC,gene_table,GO_db,back_GO)
         uniGO = unique(go_table.GO)
         MUtests = [length(df[df.keymap[(go,)]].score) >2 && MannWhitneyUTest(df[df.keymap[(go,)]].score,back_GO.expected[back_dict[go]]) for go in uniGO]
         ids = findall((!isa).(MUtests,Bool))
-        ret = DataFrame(:GO => uniGO[ids],
+        ret = DataFrame(:GO_ID => uniGO[ids],
             :pval=>pvalue.(MUtests[ids]),
             :exp_fERC=>mean.(back_GO.expected[[back_dict[g] for g in uniGO[ids]]]),
             :obs_fERC=>combine(df,:score=>mean).score_mean[ids],
-            :pval_BH=>adjust(pvalue.(MUtests[ids]),BenjaminiHochberg()))
+            :pval_BH=>adjust(pvalue.(MUtests[ids]),BenjaminiHochberg()),
+            :type=>back_GO.type[[back_dict[g] for g in uniGO[ids]]],
+            :description=>back_GO.desc[[back_dict[g] for g in uniGO[ids]]])
         return(sort(ret,:pval))
     else
-        return(DataFrame(:GO=>missing,:pval=>missing,:exp=>0,:obs_mean=>0,:pval_BH=>missing))
+        return(DataFrame(:GO_ID=>missing,:pval=>missing,:exp=>0,:obs_mean=>0,:pval_BH=>missing,:type=>missing,:desc=>missing))
     end
 end
 
@@ -117,7 +119,7 @@ Generates a set of GO terms for an ERC network, with weights relative to the ave
 """
 function go_null(GO_table,gene_table)
     uniGO = unique(GO_table.GO_ID)
-    mean_scores = [collect(skipmissing(filter(:flybase=> g ->!ismissing(g) && g ∈  GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC)) for GO in uniGO]
+    mean_scores = [filter(isfinite,collect(skipmissing(filter(:flybase=> g ->!ismissing(g) && g ∈  GO_table.DB_object_id[GO_table.GO_ID .== GO],gene_table).mean_fERC))) for GO in uniGO]
     return(DataFrame(:GO_ID=>uniGO,:expected=>mean_scores))
 end
 
@@ -126,7 +128,7 @@ end
 Return the gene ids for all genes in any GO category. Useful to plot GO categories across the network.
 """
 function go2gene(go,GO_table,gene_table)
-    fbids = filter(:GO=>g->g==go,GO_table).DB_object_id
+    fbids = filter(:GO_ID=>g->g==go,GO_table).DB_object_id
     geneids = filter(:flybase=>fb-> fb ∈ fbids,gene_table).gene
     return(geneids)
 end
