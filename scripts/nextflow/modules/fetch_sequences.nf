@@ -21,15 +21,12 @@ process fetchSequences {
     using DrWatson
     @quickactivate
     include(srcdir("Finding_orthologs.jl"))
-    dir=run(`\${PWD}`)
-    if( !endswith(dir,"/"))
-        dir *= "/"
-    end
-    download_and_prep_sequences("${taxon}";level="${level}",accession="${abbrev}",dir=dir)
+    download_and_prep_sequences("${taxon}";level="${level}",accession="${abbrev}",dir="./")
     """
 
     output:
-    path "seqs/*.faa"
+    path "*.faa"
+    path "*.gff"
 }
 
 workflow {

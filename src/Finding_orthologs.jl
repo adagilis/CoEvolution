@@ -19,11 +19,12 @@ function download_and_prep_sequences(taxon;level="chromosome",accession="classic
         faa = files[g]*"/protein.faa"
         gff = files[g]*"/genomic.gff"
         if accession == "classic"
-            name = split(read(`bash src/get_name.sh $gcf`,String)," ")
+            script = srcdir("get_name.sh")
+            name = split(read(`bash $script $gcf`,String)," ")
             out_faa = dir*name[1][1]*"_"*replace(name[2],r"\n"=>"")*".faa"
             out_gff = dir*name[1][1]*"_"*replace(name[2],r"\n"=>"")*".gff"
         elseif accession == "full"
-            name = split(read(`bash src/get_name.sh $gcf`,String)," ")
+            name = split(read(`bash $script $gcf`,String)," ")
             out_faa = dir*name[1]*"_"*replace(name[2],r"\n"=>"")*".faa"
             out_gff = dir*name[1]*"_"*replace(name[2],r"\n"=>"")*".gff"
         else

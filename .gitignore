@@ -430,3 +430,4 @@ melanogaster_network.svg
 #Nextflow intermediary outputs
 scripts/nextflow/.nextflow/*
 .nextflow*
+work/*
