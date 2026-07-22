@@ -3,22 +3,30 @@
 *
 */
 
+params {
+    level: String = "chromosome"
+    abbrev: String = "classic"
+}
+
 process fetchSequences {
+    input:
+    val taxon
+    val level
+    val abbrev
+
     script:
     """
-    julia scripts/julia/fetchSequences.jl -s $species -l $level -d $path -a $name
+    julia scripts/julia/fetchSequences.jl -t '${taxon}' -l '${level}' -d "." -a '${abbrev}'
     """
 
     output:
-        path 'seqs/*.faa'
+    path "seqs/*.faa"
 }
 
 workflow {
 
     main:
     // emit a greeting
-    fetchSequences()
+    fetchSequences(params.taxon,params.level,params.abbrev)
 
-    publish:
-    first_output =  
 }

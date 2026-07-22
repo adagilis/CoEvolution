@@ -426,3 +426,7 @@ melanogaster_network.svg
 *.faa
 *.dmnd
 *.blastp.tsv
+
+#Nextflow intermediary outputs
+scripts/nextflow/.nextflow/*
+.nextflow*

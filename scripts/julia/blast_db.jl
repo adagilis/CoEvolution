@@ -44,7 +44,7 @@ if data_dir==""
 elseif( !endswith(data_dir,"/"))
     data_dir *= "/"
 end
-species = replace.(filter(endswith(".faa"),readdir(parsed_args["seqs_dir"]))),r".faa"=>"")
+species = replace.(filter(endswith(".faa"),readdir(parsed_args["seqs_dir"])),r".faa"=>"")
 all_orthologs = find_orths(parsed_args["focal"],species,parsed_args["seqs_dir"],data_dir)
 
 using Arrow
