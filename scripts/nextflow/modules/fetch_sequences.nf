@@ -4,6 +4,7 @@
 */
 
 params {
+    taxon: String
     level: String = "chromosome"
     abbrev: String = "classic"
 }
@@ -16,7 +17,15 @@ process fetchSequences {
 
     script:
     """
-    julia scripts/julia/fetchSequences.jl -t '${taxon}' -l '${level}' -d "." -a '${abbrev}'
+    #!/usr/bin/env julia
+    using DrWatson
+    @quickactivate
+    include(srcdir("Finding_orthologs.jl"))
+    dir=run(`\${PWD}`)
+    if( !endswith(dir,"/"))
+        dir *= "/"
+    end
+    download_and_prep_sequences("${taxon}";level="${level}",accession="${abbrev}",dir=dir)
     """
 
     output:
