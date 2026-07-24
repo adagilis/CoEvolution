@@ -126,7 +126,6 @@ function build_orth_files(rbh_res,focal,path;cutoff=4,quiet=true)
     #Clean up from previous failed runs, just in case. Deletes all 0 size files
     run(`find $outpath -size 0b -delete`)
     isdir(outpath) || mkdir(outpath)
-    focal = rbh_res.species1[1]
     infile = path*"seqs/"*focal*".faa"
     uniqseq = unique(rbh_res.i)
     tprint("{blue}Found $(length(uniqseq)) sets of reciprocal best hits. Generating alignment files.{/blue}")
