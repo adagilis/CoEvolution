@@ -77,13 +77,14 @@ process concat_files {
     script:
     """
     head -1 ${files[0]} > ${focal}_rbh_table.csv
-    tail -n +2 ${files} >> ${focal}_rbh_table.csv
+    tail -q -n +2 ${files} >> ${focal}_rbh_table.csv
     """
     output:
     path "${focal}_rbh_table.csv", emit: rbh
 }
 
 process create_seq_files {
+    cpus 12
     input:
     path rbh_table
     path inputdir
@@ -96,8 +97,8 @@ process create_seq_files {
     using CSV, DataFrames
     rbh_res = CSV.read("${rbh_table}",DataFrame)
     uniqseq = unique(rbh_res.i)
-    seqfiles = filter(endswith(".faa"),readdir("${inputdir}"))
-    focalfile = filter(contains("${focal}"),seqfiles)
+    seqfiles = filter(endswith(".faa"),readdir("${inputdir}",join=true))
+    focalfile = filter(contains("${focal}"),seqfiles)[1]
     function append_seq(seq,species,species_file,file)
         run(pipeline(`echo ">\$species"`;stdout=file,append=true))
         run(pipeline(pipeline(`seqkit grep -p "\$seq" \$species_file`,`grep -v "\$seq"`);stdout=file,append=true))
@@ -108,10 +109,10 @@ process create_seq_files {
         subrbh = rbh_res[rbh_res.i.==i,:]
         if length(subrbh.species2) >= 4
             outfile = i*".fasta"
-            append_seq(i,focalfile,infile,outfile)
+            append_seq(i,"${focal}",focalfile,outfile)
             for orth in 1:length(subrbh.i)
                     species_name = subrbh.species2[orth]
-                    species_file = filter(contains(species_name),seqfiles)
+                    species_file = filter(contains(species_name),seqfiles)[1]
                     seq_name = subrbh.j[orth]
                     append_seq(seq_name,species_name,species_file,outfile)
             end
@@ -123,6 +124,22 @@ process create_seq_files {
     path "*.fasta"
 
 }
+
+
+process align_fastas {
+    input:
+        path fasta
+
+    script:
+    def out = fasta.name.replace(".fasta",".aligned.fasta")
+    """
+    mafft --anysymbol --quiet --auto ${fasta} > ${out}
+    """
+    output:
+    path "*.aligned.fasta"
+}
+
+
 
 workflow {
 
@@ -150,15 +167,19 @@ workflow {
 
     prep_orth_files = create_seq_files(rbh_res.rbh,params.inputDir,params.focal)
 
-    //aligned_files = align_fastas(prep_orth_files.)
+    aligned_files = align_fastas(prep_orth_files.flatten())
 
     publish:
     rbh = rbh_res.rbh
+    orths = aligned_files.collect().out
 
 }
 
 output {
     rbh {
         path 'data/'
+    }
+    orths{
+        path 'data/fasta'
     }
 }
