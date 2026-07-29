@@ -36,7 +36,6 @@ process runAstral{
     """
     cat ${trees} > concat_trees.treefile
     astral4 -i concat_trees.treefile -o astral_consensus.newick --root ${outgroup}
-
     """
     output:
         path astral_consensus.newick, emit: consensus
