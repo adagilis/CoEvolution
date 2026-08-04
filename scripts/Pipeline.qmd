@@ -183,7 +183,6 @@ genes = replace.(filter(endswith(".treefile"),readdir(data_dir*focal*"trees/",jo
 gene_table = DataFrame(gene=genes,
     stable_id=missings(String,length(genes)),
     name=missings(String,length(genes)),
-    flybase=missings(String,length(genes)),
     chr=missings(String,length(genes)),
     pos_1=missings(Int64,length(genes)),
     pos_2=missings(Int64,length(genes)),
@@ -197,7 +196,7 @@ for gs in 1:length(parts)
     gene_names = copy(parts[gs])
     subtable = find_name(gene_names,"dmelanogaster_gene_ensembl")
     rows = indexin(subtable.gene,genes)
-    gene_table[rows,2:8] = subtable[:,2:8]
+    gene_table[rows,2:7] = subtable[:,2:7]
     gene_table.num_rbh[(1:length(gene_names)).+part_size*(gs-1)] = num_rbh.(gene_names)
 end
 
