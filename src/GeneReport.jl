@@ -1,13 +1,11 @@
 using Bonito, Observables
-using WGLMakie
+
 
 using DataFrames, JLD2, CSV
+
 # ==========================================
 # 1. Reading in data and making fetch functions.
 # ==========================================
-
-
-@load "data/dipterans/D_melanogaster_GENE_DB.jld2" GENE_DB gene_table
 
 function get_precomputed_stats(gene)
     idx = findfirst(gene_table.gene .== gene)
@@ -23,12 +21,11 @@ function get_significant_interactions(gene)
     idx = findfirst(gene_table.gene .==gene)
     return(DataFrame(partner=gene_table.partners[idx],ferc=gene_table.partner_fERC[idx]))
 end
+function get_GO_results(gene)
 
-# ==========================================
-# 2. App Definition
-# ==========================================
+end
 
-dashboard = App() do session
+gene_dashboard = App() do session
     search_query = Observable("")
     selected_gene = Observable("NP_001259303.1") 
     
@@ -162,8 +159,82 @@ dashboard = App() do session
     )
 end
 
-# ==========================================
-# 3. Serve the App
-# ==========================================
-server = Bonito.Server(dashboard, "127.0.0.1", 8080)
-println("Dashboard is running! Open http://127.0.0.1:8080 in your browser.")
+function genePlot(gene)
+
+    gene_ERC = subset(ERC,[:i,:j] => (i,j) -> i .== gene .|| j .== gene)
+
+    fig = Figure()
+    ax1 = Axis(fig[1,1],
+        xlabel="fERC",
+        ylabel="Normalized Frequency",
+        xgridvisible=false,
+        ygridvisible=false)
+
+    density!(ax1,filter(isfinite,ERC.fERC),strokecolor=:blue,color=(:blue,0.5))
+    density!(ax1,gene_ERC.fERC,strokecolor=:red,color=(:red,0.5))
+    xlims!(ax1,(-5,15))
+    vlines!(ax1,quantile(gene_ERC.fERC,[0.5]),color=:red)
+    vlines!(ax1,quantile(filter(isfinite,ERC.fERC),[0.5]),color=:blue)
+
+    idx = findall(gene_ERC.i .== gene)
+    partners = gene_ERC.i
+    partners[idx] = gene_ERC.j[idx]
+    chrs = gene_ERC.chr_i
+    chrs[idx] = gene_ERC.chr_j[idx]
+
+    pos1 = gene_ERC.pos_i_1
+    pos2 = gene_ERC.pos_i_2
+    pos1[idx] = gene_ERC.pos_j_1[idx]
+    pos2[idx] = gene_ERC.pos_j_2[idx]
+
+    pos = (pos1+pos2)/2
+
+    pos_converted = chr_order_pos(pos,chrs,chr_order,chr_lengths)
+    mean_fERC = [gene_table.mean_fERC[findfirst(gene_table.gene .== x)] for x in partners]
+    gene_ERC.ratio = gene_ERC.fERC .- mean_fERC
+
+    ax2 = Axis(fig[1,2],
+        xlabel=L"\overline{fERC}",
+        ylabel=L"fERC_{gene}",
+        xgridvisible=false,
+        ygridvisible=false)
+    sc2 = scatter!(ax2,mean_fERC,gene_ERC.fERC,color=gene_ERC.ratio,markersize=3,colormap=:vik)
+    lines!(ax2,range(-2,6),range(-2,6),linestyle=:dash,color=:black)
+    xlims!(ax2,[-2,5])
+    Colorbar(fig[1,2][1,2],sc2,label=L"fERC_{gene}-\overline{fERC}")
+
+    ax3 = Axis(fig[2,:],
+        xlabel="Position",
+        ylabel=L"fERC_{gene}",
+        yminorgridvisible=false,
+        xticks=chr_ticks,
+        xticksize=0,
+        xminorticks=chr_lines,
+        xminorticksvisible=true,
+        xminorgridvisible=true,
+        xminorgridcolor=RGBAf(0,0,0,0.25),
+        xgridcolor=RGBAf(0,0,0,0),
+        limits =(0,maximum(chr_lines),nothing,nothing))
+
+    sc3 = scatter!(ax3,pos_converted,gene_ERC.fERC,color=gene_ERC.ratio,markersize=3,colormap=:vik)
+    partners = gene_table.partners[findfirst(gene_table.gene.==gene)]
+    partnerfERC = gene_table.partner_fERC[findfirst(gene_table.gene.==gene)]
+    partner_table = gene_table[findall(gene_table.gene .∈ [partners]),:]
+    partner_table.fERC = partnerfERC
+    sort!(partner_table,:fERC,rev=true)
+    #Only annotate top 20 partners
+    partner_table = partner_table[1:20,:]
+    positions = chr_order_pos((partner_table.pos_1 .+ partner_table.pos_2) ./ 2,partner_table.chr,chr_order,chr_lengths)
+    ylims!(ax3,[-3.5,8])
+
+    annotation!(ax3,positions,partner_table.fERC,text=replace(partner_table.name,missing=>""),font=:italic)
+
+    for (label,layout) in zip(["A","B","C"],[fig[1,1],fig[1,2],fig[2,:]])
+        Label(layout[1,1,TopLeft()],label,
+            fontsize=26,
+            font=:bold,
+            padding=(0,5,5,0),
+            halign=:right)
+    end
+    save(data_dir*focal*"/gene_enrichment/"*gene*".pdf",fig)
+end

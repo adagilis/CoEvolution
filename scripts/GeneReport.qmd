@@ -1,0 +1,127 @@
+---
+title: "Gene Report"
+format: html
+engine: julia
+author: Andrius J. Dagilis
+execute:
+    echo: true
+    eval: false
+julia: 
+    exeflags: ["--project=../CoEvolution"]
+---
+
+# Introduction
+
+To more easily present results for any gene of interest, we have written a basic interface using `Bonito.jl` to allow users to query existing data-sets. If you ended up on this page by mistake and were looking to just see explore the genetic interactions, the link is [here](TBD).
+
+This page shows you how to produce the applet for your own data, or run a version of it locally using figshare data. This requires loading in several pre-computed data-sets that are generated during the pipeline. To make the files both human readable and easy to rpocess using this interface, the files are mostly stored as .csv files in the figrshare repository for the _D. melanogaster_ data. Downloading that repository should allow you to explore the data freely on your own machine. We hope to be able to host this applet indefinitely, but have seen too many similar cases where the database disappears forever as funding runs out, so this portable solution is meant to allow the results to be accessible even if the applet is no longer hosted by us.
+
+All this out of the way - how can you generate the gene reports for your own species of interest?
+
+## 1) Run per-gene analysis
+
+The first step is to run analysis on each gene, generating both a plot and a summary of its GO enrichment/depletion. In practice, we've found generating the data for each gene is only a matter of 1-2seconds. If you are only interested in a few genes, you can reasonably just run the below code for those genes and look at their results in isolation. Environmentally/economically speaking, is it worth generating, say 12k reports in the case of the _D. melanogaster_ data if the usage ends up being low? Suppose 100 researchers query their favorite 10 genes in the next year - that's only 1000 reports, which could have been produced on the fly with a minor delay and saved a whole lot of space/computation ahead of time. But, being hopeless perfectionists, we figured we might as well present _all_ of the genes. Just be aware doing so for your own data may not be necessary/desireable. As with the main pipeline, the code below is `Julia` native.
+
+```{julia}
+using DrWatson
+@quickactivate
+#As with the pipeline script, set these to their appropriate values for your system
+taxon="dipterans"
+data_dir=datadir(taxon*"/")
+focal="D_melanogaster"
+include(srcdir("Annotation_functions.jl"))
+
+#Generate GO report for each gene
+using DataFrames, JLD2, Arrow, HypothesisTests, StatsBase
+@load data_dir*focal*"_GENE_DB.jld2" GENE_DB gene_table
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
+go_cats= open_GO(data_dir*"gene_anno.gaf.gz")
+#If you have not generated a GO background expectation file, uncomment and run the below
+#go_back = go_null(gene_table,go_cats)
+#And add descriptions to them:
+#annotate_go_table!(go_back,data_dir*"go_obo") 
+@load data_dir*focal*"_go_background.jld2" go_back
+
+#This is written so it only runs any reports not yet generated.
+
+using FLoops, ProgressMeter
+
+done = replace.(filter(endswith("csv"),readdir(data_dir*focal*"/gene_enrichment/",join=false)),".csv"=>"")
+todo = setdiff(gene_table.gene,done)
+
+
+p=Progress(length(todo),desc="Generating gene reports.",)
+@floop ThreadedEx() for g in todo
+           res = ERC_GO_extend(g,ERC,gene_table,go_cats,go_back)
+           if length(collect(skipmissing(res.pval))) > 0
+               res = subset(res,:pval_BH => p-> p .< 0.05)
+               res.diff = res.obs_fERC .- res.exp_fERC
+               sort!(res,:diff) 
+               CSV.write("data/dipterans/D_melanogaster/gene_enrichment/"*g*".csv",res)
+           end
+           next!(p)
+end
+
+```
+
+## 2) Per gene plot reports
+
+We next generate a plot for each gene. Similar to before - this takes a while and is a lot of data. You can generate these on the fly (and I should build the applet to allow you to generate these for a gene if it's missing), but in the interest of having a pre-baked option we'll generate them here.
+
+```{julia}
+using DrWatson
+@quickactivate
+#As with the pipeline script, set these to their appropriate values for your system
+taxon="dipterans"
+data_dir=datadir(taxon*"/")
+focal="D_melanogaster"
+include(srcdir("Annotation_functions.jl"))
+
+#Generate GO report for each gene
+using DataFrames, JLD2, Arrow, HypothesisTests, StatsBase
+@load data_dir*focal*"_GENE_DB.jld2" GENE_DB gene_table
+ERC = DataFrame(Arrow.Table(data_dir*focal*"_ERC_annotated.arrow"))
+
+using CairoMakie, LaTeXStrings
+include(srcdir("Plot_utilities.jl"))
+include(srcdir("GeneReport.jl"))
+
+chr_order = ["2L","2R","3L","3R","4","X","Y","mitochondrion_genome"]
+chr_lengths = [23312347,25254477,28012551,32067996,1271129,23107330,3666928]
+chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
+chr_label_pos = vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 2:7])
+chr_ticks = (chr_label_pos,chr_order[1:7])
+
+done = replace.(filter(x->endswith("pdf",x),readdir(data_dir*focal*"/gene_enrichment/",join=false)),".pdf"=>"")
+todo = setdiff(gene_table.gene,done)
+
+using FLoops, ProgressMeter
+p=Progress(length(todo),desc="Generating gene reports.",)
+@floop ThreadedEx() for g in todo
+    genePlot(g)
+    next!(p)
+end
+
+
+
+```
+
+
+
+```{julia}
+using DrWatson
+@quickactivate
+#As with the pipeline script, set these to their appropriate values for your system
+taxon="dipterans"
+data_dir=datadir(taxon*"/")
+focal="D_melanogaster"
+include(srcdir("Annotation_functions.jl"))
+include(srcdir("GeneReport.jl"))
+
+@load "data/dipterans/D_melanogaster_GENE_DB.jld2" GENE_DB gene_table
+
+
+
+server = Bonito.Server(dashboard, "127.0.0.1", 8080)
+
+```

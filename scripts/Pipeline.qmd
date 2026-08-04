@@ -1,5 +1,4 @@
 ---
-','---
 title: "Pipeline example"
 format: pdf
 engine: julia
@@ -529,7 +528,7 @@ save(plot_prefix*"fig2.pdf",fig2)
 
 ## Sxl specific interactions
 
-As a "model" gene we look at Sxl, which is the sex determiner in _D. melanogaster_. The figures here just summarize the statistics for Sxl compared to the rest of the genome.
+As a "model" gene we look at Sxl, which is the sex determiner in *D. melanogaster*. The figures here just summarize the statistics for Sxl compared to the rest of the genome.
 
 ```{julia}
 
@@ -770,7 +769,6 @@ expected_GO = go_null(go_cats)
 annotate_GO_table!(expected_GO,"data/dipterans/go.obo")
 #And now generate per-gene results
 using FLoops, ProgressMeter
-
 
 done = replace.(readdir(data_dir*focal*"/gene_enrichment/"),".csv"=>"")
 todo = setdiff(gene_table.gene,done)
