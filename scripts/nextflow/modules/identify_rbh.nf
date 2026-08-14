@@ -6,6 +6,7 @@
 params {
     focal: String
     inputDir: Path
+    minRBH: Integer = 4
 }
 
 process makeDBfocal {
@@ -107,7 +108,7 @@ process create_seq_files {
     p=Progress(length(uniqseq),desc="Creating sequence files.")
     @floop ThreadedEx() for i in uniqseq
         subrbh = rbh_res[rbh_res.i.==i,:]
-        if length(subrbh.species2) >= 4
+        if length(subrbh.species2) >= ${params.minRBH}
             outfile = i*".fasta"
             append_seq(i,"${focal}",focalfile,outfile)
             for orth in 1:length(subrbh.i)
@@ -136,7 +137,7 @@ process align_fastas {
     mafft --anysymbol --quiet --auto ${fasta} > ${out}
     """
     output:
-    path "*.aligned.fasta"
+    path "*.aligned.fasta",emit: aligned
 }
 
 
@@ -171,7 +172,7 @@ workflow {
 
     publish:
     rbh = rbh_res.rbh
-    orths = aligned_files.collect().out
+    orths = aligned_files.aligned
 
 }
 
@@ -180,6 +181,6 @@ output {
         path 'data/'
     }
     orths{
-        path 'data/fasta'
+        path 'data/aligned'
     }
 }

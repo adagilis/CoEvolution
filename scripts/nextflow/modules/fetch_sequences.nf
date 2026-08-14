@@ -6,7 +6,6 @@
 */
 params {
     taxon: String
-    outdir: Path = "."
     level: String = "chromosome"
     abbrev: String = "classic"
 }
