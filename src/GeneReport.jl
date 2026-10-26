@@ -1,7 +1,8 @@
+using DrWatson
+@quickactivate
 using Bonito, Observables
-using WGLMakie
 
-using DataFrames, JLD2, CSV
+using DataFrames, JLD2
 # ==========================================
 # 1. Reading in data and making fetch functions.
 # ==========================================
@@ -13,7 +14,7 @@ function get_precomputed_stats(gene)
     idx = findfirst(gene_table.gene .== gene)
     return(Dict("Name/Symbol"=>gene_table.name[idx],
                 "FlybaseID"=>gene_table.stable_id[idx],
-                "Chromosome" => gene_table.chr[idx], 
+                "Position" => gene_table.chr[idx]*":"*string(gene_table.pos_1[idx])*"-"*string(gene_table.pos_2[idx]), 
                 "Description" =>gene_table.description[idx],
                 "mean fERC"=>gene_table.mean_fERC[idx],
                 "RBH in data"=>gene_table.num_rbh[idx],
@@ -21,7 +22,9 @@ function get_precomputed_stats(gene)
 end
 function get_significant_interactions(gene)
     idx = findfirst(gene_table.gene .==gene)
-    return(DataFrame(partner=gene_table.partners[idx],ferc=gene_table.partner_fERC[idx]))
+    partners = gene_table.partners[idx]
+    partner_names = gene_table.name[[findfirst(gene_table.gene .== x) for x in partners]]
+    return(DataFrame(PartnerID=partners,PartnerName=partner_names,fERC=gene_table.partner_fERC[idx]))
 end
 
 # ==========================================
@@ -36,10 +39,9 @@ dashboard = App() do session
     # Search Box & Autocomplete UI
     # ------------------------------------------
     
-    # FIX 1: Use `event.target.value` instead of `this.value`
-    # We also assign an explicit ID so we can clear it easily later.
     search_box = DOM.input(
         id = "gene-search",
+        value = search_query,
         type = "text",
         placeholder = "Search by gene symbol, ID, or alias (e.g., p53)...",
         oninput = js"function(event) { $(search_query).notify(event.target.value); }",
@@ -73,15 +75,10 @@ dashboard = App() do session
                 DOM.div("Aliases: ", join(g.alias, ", "), style="font-size: 12px; color: #666;"),
                 style = "padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; background: #fff; transition: background 0.2s;",
                 
-                # FIX 2: Explicitly pass function(event), target the specific input ID, and notify
                 onclick = js"""function(event) {
                     $(selected_gene).notify($(g.id));
-                    document.getElementById('gene-search').value = '';
-                    $(search_query).notify('');
-                }""",
-                
-                onmouseover = js"this.style.background='#f0f8ff'",
-                onmouseout = js"this.style.background='#fff'"
+                    $(search_query).notify(''); // <-- This will now reactively clear the input box via Bonito
+                }"""
             )
         end
         
@@ -107,10 +104,31 @@ dashboard = App() do session
     
     interactions_view = map(selected_gene) do gene
         interactions = get_significant_interactions(gene)
-        rows = [DOM.tr(DOM.td(g.partner, style="padding: 8px; border: 1px solid #ddd;"), DOM.td(string(g.ferc), style="padding: 8px; border: 1px solid #ddd;")) for g in eachrow(interactions)]
-        header = DOM.tr(DOM.th("Interacting Gene", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"), DOM.th("fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"))
-        return DOM.div(DOM.h3("Significant Interactions"), DOM.table(DOM.thead(header), DOM.tbody(rows...), style="width: 100%; border-collapse: collapse; text-align: left;"))
+        rows = [
+        DOM.tr(
+            DOM.td(x.PartnerID, style="padding: 8px; border: 1px solid #ddd;"),
+            DOM.td(x.PartnerName, style="padding: 8px; border: 1px solid #ddd;"),
+            DOM.td(string(x.fERC), style="padding: 8px; border: 1px solid #ddd;")
+        ) for x in eachrow(interactions)
+        ]
+        header = DOM.tr(
+            DOM.th("Partner ID", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"),
+            DOM.th("Partner Name", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"),
+            DOM.th("fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;")
+        )
+    
+        html_table = DOM.table(
+            DOM.thead(header), 
+            DOM.tbody(rows...), 
+            style="width: 100%; border-collapse: collapse; text-align: left;"
+        )
+        return DOM.div(
+        DOM.h3("Significant Interactions"), 
+        html_table,
+        style="overflow-y:auto; height:300px;"
+        )
     end
+
     
     figure_view = map(selected_gene) do gene
         img_url = "https://via.placeholder.com/500x350.png?text=$gene+Pre-generated+Figure"
@@ -131,7 +149,7 @@ dashboard = App() do session
                         DOM.th("observed fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"),
                         DOM.th("description", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;")
                         )
-            return DOM.div(DOM.h3("GO Depletion/Enrichment"), DOM.table(DOM.thead(header), DOM.tbody(rows...), style="width: 100%; border-collapse: collapse; text-align: left;"))
+            return DOM.div(DOM.h3("GO Depletion/Enrichment"), DOM.table(DOM.thead(header), DOM.tbody(rows...), style="width: 100%; border-collapse: collapse; text-align: left;"),style="overflow-y:auto;height:600px;")
         else
             return DOM.div(DOM.h3("No GO Enrichment/Depletion"))
         end
@@ -143,7 +161,7 @@ dashboard = App() do session
     return DOM.div(
         style = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px;",
         
-        DOM.h1("Gene Analytics Dashboard"),
+        DOM.h1("Co-evolutionary Analytics Dashboard"),
         DOM.p("Search across 12,000+ genes by symbol, Ensembl ID, or known aliases."),
         
         DOM.div(
@@ -165,5 +183,5 @@ end
 # ==========================================
 # 3. Serve the App
 # ==========================================
-server = Bonito.Server(dashboard, "127.0.0.1", 8080)
-println("Dashboard is running! Open http://127.0.0.1:8080 in your browser.")
+#server = Bonito.Server(dashboard, "127.0.0.1", 8080)
+#println("Dashboard is running! Open http://127.0.0.1:8080 in your browser.")

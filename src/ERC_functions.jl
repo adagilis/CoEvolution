@@ -13,7 +13,7 @@ import Term: tprint
 include("Phylo_utilities.jl")
 include("Stats_utilities.jl") 
 """
-    calculate_ERC(gene1,gene2,species_tree;cutoff=5) → [cor,p-value]
+    calculate_ERC(id1,id2,gene1,gene2,species_tree;cutoff=5) → [cor,p-value]
 Function which takes two gene trees and a species tree, and returns the Evolutionary Rate Correlation between the two genes.
 ERC is defined as the correlation of relativized evolutionary rates between two trees. We use the approach as defined by Clark, with the default cutoff of 5 chosen based on Steenwyk et al.
 
@@ -22,16 +22,16 @@ Similarly, I don't perform the z-transform as done in both prior approaches beca
 
 In short - there's definitely more to develop this approach, but we're sticking to published methods here for simplicity.
 """
-function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min_shared=3,min_edges=4)
+function calculate_ERC(id1,id2,tree1,tree2,species_tree;cutoff=5,min_shared=3,min_edges=4)
     template = deepcopy(species_tree)
     gene1 = deepcopy(tree1)
     gene2 = deepcopy(tree2)
     tips_both=tip_overlap(gene1,gene2)
     shared_tips = length(tips_both)
     if(length(tips_both) >= min_shared)
-        keeptips!(template,tips_both)
-        keeptips!(gene1,tips_both)
-        keeptips!(gene2,tips_both)        
+        template = keeptips(species_tree,tips_both)
+        gene1 = keeptips(tree1,tips_both)
+        gene2 = keeptips(tree2,tips_both)        
         scale_rates = breakdown_tree(template)
         rename!(scale_rates,:bl => :bl_sp)
         branches_1 = breakdown_tree(gene1)
@@ -44,6 +44,7 @@ function calculate_ERC(id1,id2,tree1,tree2,species_tree::RootedTree;cutoff=5,min
         dropmissing!(all_branches)
         rates_1 = all_branches[:,"bl_1"] ./ all_branches[:,"bl_sp"] 
         rates_2 = all_branches[:,"bl_2"] ./ all_branches[:,"bl_sp"]
+        
         kept_edges = intersect(findall(<(cutoff),rates_1),findall(<(cutoff),rates_2))
         if(length(kept_edges)>min_edges)
             corTest = CorrelationTest(rates_1[kept_edges],rates_2[kept_edges])
