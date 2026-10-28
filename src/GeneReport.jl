@@ -3,7 +3,7 @@ using DrWatson
 include(srcdir("Plot_utilities.jl"))
 using Bonito, Observables
 
-using TidierDB, WGLMakie, JLD2, DataFrames, StatsBase, Statistics
+using TidierDB, WGLMakie, JLD2, DataFrames, StatsBase, Statistics, CSV
 import WGLMakie as W
 # ==========================================
 # 1. Reading in data and function definitions.
@@ -115,7 +115,8 @@ end
 
 dashboard = App() do session
     search_query = Observable("")
-    selected_gene = Observable("NP_001259303.1") 
+    selected_gene = Observable("NP_001259303.1")
+    active_tab = Observable("Overview") 
     
     # ------------------------------------------
     # Search Box & Autocomplete UI
@@ -160,6 +161,7 @@ dashboard = App() do session
                 onclick = js"""function(event) {
                     $(selected_gene).notify($(g.id));
                     $(search_query).notify(''); // <-- This will now reactively clear the input box via Bonito
+                    $(active_tab).notify('Overview')
                 }"""
             )
         end
@@ -217,7 +219,7 @@ dashboard = App() do session
 
     
     figure_view = map(selected_gene) do gene
-       makie_plot(gene)
+        return DOM.div(makie_plot(gene))   
     end
     
     go_plot_view = map(selected_gene) do gene
@@ -240,6 +242,36 @@ dashboard = App() do session
         end
     end
     
+    dynamic_view = map(active_tab) do tab
+        if tab == "Overview"
+            return stats_view
+        elseif tab == "Plot"
+            return figure_view
+        elseif tab == "Interactions"
+            return interactions_view
+        elseif tab == "GO"
+            return go_plot_view
+        else 
+            return stats_view
+        end
+    end
+
+    tab_bar = DOM.div(
+        DOM.button("Overview", onclick=onclick = js"""function(event) {
+                    $(active_tab).notify("Overview");
+                }"""),
+        DOM.button("Plot", onclick=js"""function(event) {
+                    $(active_tab).notify("Plot");
+                }"""),
+        DOM.button("Interactions",onclick=js"""function(event) {
+                    $(active_tab).notify("Interactions");
+                }"""),
+        DOM.button("GO", onclick=js"""function(event) {
+                    $(active_tab).notify("GO");
+                }"""),
+        style="display: flex; gap: 10px; margin-bottom: 20px;"
+    )
+
     # ------------------------------------------
     # Layout Assembly
     # ------------------------------------------
@@ -256,12 +288,10 @@ dashboard = App() do session
         ),
         
         header_view,
-        
-        DOM.div(
-            DOM.div(stats_view, DOM.br(), interactions_view, style="flex: 1; padding-right: 20px;"),
-            DOM.div(figure_view, DOM.br(), go_plot_view, style="flex: 1; display: flex; flex-direction: column; gap: 20px;"),
-            style="display: flex; flex-direction: row; flex-wrap: wrap;"
-        )
+
+        tab_bar,
+
+        dynamic_view
     )
 end
 
