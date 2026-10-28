@@ -1,14 +1,23 @@
 using DrWatson
 @quickactivate
+include(srcdir("Plot_utilities.jl"))
 using Bonito, Observables
 
-using DataFrames, JLD2
+using TidierDB, WGLMakie, JLD2, DataFrames, StatsBase, Statistics
+import WGLMakie as W
 # ==========================================
-# 1. Reading in data and making fetch functions.
+# 1. Reading in data and function definitions.
 # ==========================================
 
 
 @load "data/dipterans/D_melanogaster_GENE_DB.jld2" GENE_DB gene_table
+con = DBInterface.connect(DuckDB.DB("data/ERC.duckdb"))
+dros_table = db_table(con,"D_melanogaster")
+ERC_total = @chain dros_table begin
+    @select(fERC)
+    @collect
+end
+ERC_total = ERC_total.fERC
 
 function get_precomputed_stats(gene)
     idx = findfirst(gene_table.gene .== gene)
@@ -25,6 +34,79 @@ function get_significant_interactions(gene)
     partners = gene_table.partners[idx]
     partner_names = gene_table.name[[findfirst(gene_table.gene .== x) for x in partners]]
     return(DataFrame(PartnerID=partners,PartnerName=partner_names,fERC=gene_table.partner_fERC[idx]))
+end
+
+function makie_plot(gene)
+    chr_order = ["2L","2R","3L","3R","4","X","Y","mitochondrion_genome"]
+    chr_lengths = [23312347,25254477,28012551,32067996,1271129,23107330,3666928]
+    chr_lines = [sum(chr_lengths[1:x]) for x in 1:7]
+    chr_label_pos = vcat(chr_lengths[1]/2,[chr_lengths[i]/2+chr_lines[i-1] for i in 2:7])
+    chr_ticks = (chr_label_pos,chr_order[1:7])
+
+    ERC_data = @eval @chain dros_table begin
+               @filter(i == $gene || j == $gene)
+               @select(i,j,fERC,same_chr,dist,chr_i,chr_j,pos_i_1,pos_i_2,pos_j_1,pos_j_2,pval,null)
+               @collect
+    end
+    fig = W.Figure()
+    ax1 = Axis(fig[1,1],
+    xlabel="fERC",
+    ylabel="Normalized Frequency",
+    xgridvisible=false,
+    ygridvisible=false)
+    density!(ax1,ERC_data.fERC,strokecolor=:red,color=(:red,0.5))
+    density!(ax1,ERC_total,strokecolor=:blue,color=(:blue,0.5))
+    xlims!(ax1,(-5,15))
+    vlines!(ax1,quantile(ERC_data.fERC,[0.5]),color=:red)
+    vlines!(ax1,quantile(ERC_total,[0.5]),color=:blue)
+
+    
+    idx = findall(ERC_data.i .== gene)
+    partners = ERC_data.i
+    partners[idx] = ERC_data.j[idx]
+    partner_names = [gene_table.name[findfirst(gene_table.gene .== x)] for x in partners]
+    chrs = ERC_data.chr_i
+    chrs[idx] = ERC_data.chr_j[idx]
+
+    pos1 = ERC_data.pos_i_1
+    pos2 = ERC_data.pos_i_2
+    pos1[idx] = ERC_data.pos_j_1[idx]
+    pos2[idx] = ERC_data.pos_j_2[idx]
+
+    pos = (pos1+pos2)/2
+
+    pos_converted = chr_order_pos(pos,chrs,chr_order,chr_lengths)
+    mean_fERC = [gene_table.mean_fERC[findfirst(gene_table.gene .== x)] for x in partners]
+    ERC_data.ratio = ERC_data.fERC .- mean_fERC
+
+    
+    ax2 = Axis(fig[1,2],
+    xlabel=L"\overline{fERC}",
+    ylabel=L"fERC_{gene}",
+    xgridvisible=false,
+    ygridvisible=false)
+    sc2= scatter!(ax2,mean_fERC,ERC_data.fERC,color=ERC_data.ratio,markersize=3,colormap=:vik,inspector_label=(self,index,position) -> "Gene_ID: "*partners[index]*"\n Name: "*partner_names[idx])
+    lines!(ax2,range(-2,6),range(-2,6),linestyle=:dash,color=:black)
+    xlims!(ax2,[-2,5])
+    Colorbar(fig[1,2][1,2],sc2,label=L"fERC_{gene}-\overline{fERC}")
+
+
+    ax3 = Axis(fig[2,:],
+    xlabel="Position",
+    ylabel=L"fERC_{Sxl}",
+    yminorgridvisible=false,
+    xticks=chr_ticks,
+    xticksize=0,
+    xminorticks=chr_lines,
+    xminorticksvisible=true,
+    xminorgridvisible=true,
+    xminorgridcolor=RGBAf(0,0,0,0.25),
+    xgridcolor=RGBAf(0,0,0,0),
+    limits =(0,maximum(chr_lines),nothing,nothing))
+
+    sc3 = scatter!(ax3,pos_converted,ERC_data.fERC,color=ERC_data.ratio,markersize=3,colormap=:vik,inspector_label=(self,index,position) -> "Gene_ID: "*partners[index]*"\n Name: "*partner_names[idx])
+    DataInspector(fig)
+    return(fig)
 end
 
 # ==========================================
@@ -112,9 +194,9 @@ dashboard = App() do session
         ) for x in eachrow(interactions)
         ]
         header = DOM.tr(
-            DOM.th("Partner ID", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"),
-            DOM.th("Partner Name", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;"),
-            DOM.th("fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;")
+            DOM.th("Partner ID", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;"),
+            DOM.th("Partner Name", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;"),
+            DOM.th("fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;")
         )
     
         html_table = DOM.table(
@@ -123,7 +205,7 @@ dashboard = App() do session
             style="width: 100%; border-collapse: collapse; text-align: left;"
         )
         return DOM.div(
-        DOM.h3("Significant Interactions"), 
+        DOM.h3("Significant Interactions",style="position: sticky; top: 0; z-index: 1;"), 
         html_table,
         style="overflow-y:auto; height:300px;"
         )
@@ -131,8 +213,7 @@ dashboard = App() do session
 
     
     figure_view = map(selected_gene) do gene
-        img_url = "https://via.placeholder.com/500x350.png?text=$gene+Pre-generated+Figure"
-        return DOM.div(DOM.h3("Structural Figure"), DOM.img(src=img_url, style="max-width: 100%; border-radius: 8px;"))
+       makie_plot(gene)
     end
     
     go_plot_view = map(selected_gene) do gene
@@ -162,7 +243,7 @@ dashboard = App() do session
         style = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px;",
         
         DOM.h1("Co-evolutionary Analytics Dashboard"),
-        DOM.p("Search across 12,000+ genes by symbol, Ensembl ID, or known aliases."),
+        DOM.p("Search across 12,000+ genes by symbol or Ensembl ID."),
         
         DOM.div(
             search_box,
