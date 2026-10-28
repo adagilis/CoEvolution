@@ -54,8 +54,8 @@ function makie_plot(gene)
     ylabel="Normalized Frequency",
     xgridvisible=false,
     ygridvisible=false)
-    density!(ax1,ERC_data.fERC,strokecolor=:red,color=(:red,0.5))
-    density!(ax1,ERC_total,strokecolor=:blue,color=(:blue,0.5))
+    density!(ax1,ERC_data.fERC,strokecolor=:red,color=(:red,0.5),label="Gene")
+    density!(ax1,ERC_total,strokecolor=:blue,color=(:blue,0.5),label="Overall")
     xlims!(ax1,(-5,15))
     vlines!(ax1,quantile(ERC_data.fERC,[0.5]),color=:red)
     vlines!(ax1,quantile(ERC_total,[0.5]),color=:blue)
@@ -64,7 +64,7 @@ function makie_plot(gene)
     idx = findall(ERC_data.i .== gene)
     partners = ERC_data.i
     partners[idx] = ERC_data.j[idx]
-    partner_names = [gene_table.name[findfirst(gene_table.gene .== x)] for x in partners]
+    partner_names = [coalesce(gene_table.name[findfirst(gene_table.gene .== x)]," ") for x in partners]
     chrs = ERC_data.chr_i
     chrs[idx] = ERC_data.chr_j[idx]
 
@@ -85,7 +85,7 @@ function makie_plot(gene)
     ylabel=L"fERC_{gene}",
     xgridvisible=false,
     ygridvisible=false)
-    sc2= scatter!(ax2,mean_fERC,ERC_data.fERC,color=ERC_data.ratio,markersize=3,colormap=:vik,inspector_label=(self,index,position) -> "Gene_ID: "*partners[index]*"\n Name: "*partner_names[idx])
+    sc2= scatter!(ax2,mean_fERC,ERC_data.fERC,color=ERC_data.ratio,markersize=3,colormap=:vik,inspector_label=(self,index,position) -> "Gene_ID: "*partners[index]*"\n Name: "*partner_names[index])
     lines!(ax2,range(-2,6),range(-2,6),linestyle=:dash,color=:black)
     xlims!(ax2,[-2,5])
     Colorbar(fig[1,2][1,2],sc2,label=L"fERC_{gene}-\overline{fERC}")
@@ -104,7 +104,7 @@ function makie_plot(gene)
     xgridcolor=RGBAf(0,0,0,0),
     limits =(0,maximum(chr_lines),nothing,nothing))
 
-    sc3 = scatter!(ax3,pos_converted,ERC_data.fERC,color=ERC_data.ratio,markersize=3,colormap=:vik,inspector_label=(self,index,position) -> "Gene_ID: "*partners[index]*"\n Name: "*partner_names[idx])
+    sc3 = scatter!(ax3,pos_converted,ERC_data.fERC,color=ERC_data.ratio,markersize=3,colormap=:vik,inspector_label=(self,index,position) -> "Gene_ID: "*partners[index]*"\n Name: "*partner_names[index])
     DataInspector(fig)
     return(fig)
 end
@@ -186,29 +186,33 @@ dashboard = App() do session
     
     interactions_view = map(selected_gene) do gene
         interactions = get_significant_interactions(gene)
-        rows = [
-        DOM.tr(
-            DOM.td(x.PartnerID, style="padding: 8px; border: 1px solid #ddd;"),
-            DOM.td(x.PartnerName, style="padding: 8px; border: 1px solid #ddd;"),
-            DOM.td(string(x.fERC), style="padding: 8px; border: 1px solid #ddd;")
-        ) for x in eachrow(interactions)
-        ]
-        header = DOM.tr(
-            DOM.th("Partner ID", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;"),
-            DOM.th("Partner Name", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;"),
-            DOM.th("fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;")
-        )
+        if size(interactions)[2] > 0
+            rows = [
+            DOM.tr(
+                DOM.td(x.PartnerID, style="padding: 8px; border: 1px solid #ddd;"),
+                DOM.td(x.PartnerName, style="padding: 8px; border: 1px solid #ddd;"),
+                DOM.td(string(x.fERC), style="padding: 8px; border: 1px solid #ddd;")
+            ) for x in eachrow(interactions)
+            ]
+            header = DOM.tr(
+                DOM.th("Partner ID", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;"),
+                DOM.th("Partner Name", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;"),
+                DOM.th("fERC", style="padding: 8px; background-color: #f2f2f2; border: 1px solid #ddd;position: sticky; top: 0; z-index: 1;")
+            )
     
-        html_table = DOM.table(
-            DOM.thead(header), 
-            DOM.tbody(rows...), 
-            style="width: 100%; border-collapse: collapse; text-align: left;"
-        )
-        return DOM.div(
-        DOM.h3("Significant Interactions",style="position: sticky; top: 0; z-index: 1;"), 
-        html_table,
-        style="overflow-y:auto; height:300px;"
-        )
+            html_table = DOM.table(
+                DOM.thead(header), 
+                DOM.tbody(rows...), 
+                style="width: 100%; border-collapse: collapse; text-align: left;"
+            )
+            return DOM.div(
+            DOM.h3("Significant Interactions",style="position: sticky; top: 0; z-index: 1;"), 
+            html_table,
+            style="overflow-y:auto; height:300px;"
+            )
+        else 
+            return DOM.div(DOM.h3("No significant interactions"))
+        end
     end
 
     
