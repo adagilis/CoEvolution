@@ -13,13 +13,9 @@ import WGLMakie as W
 
 @load "data/dipterans/D_melanogaster_GENE_DB.jld2" GENE_DB gene_table
 con = DBInterface.connect(DuckDB.DB("data/ERC.duckdb"))
-dros_table = db_table(con, "D_melanogaster")
 
-ERC_total = @chain dros_table begin
-    @select(fERC)
-    @collect
-end
-ERC_total = ERC_total.fERC
+tmp = DBInterface.execute(con,"""SELECT AVG(fERC) FROM D_melanogaster""")
+ERC_total = tmp.tbl[1][1]
 
 const JLD2_CACHE_DIR = joinpath(@__DIR__, "data", "jld2_cache")
 mkpath(JLD2_CACHE_DIR)
@@ -109,7 +105,8 @@ end
 # Memoized: Pure DataFrame computation 
 @memoize function get_interactions(gene)
     return disk_cache("interactions", gene) do
-        ERC_table = @eval @chain dros_table begin
+        dros_table = db_table(con, "D_melanogaster")
+        ERC_table = @eval @chain $dros_table begin
             @filter(i == $gene || j == $gene)
             @select(i, j, r, fERC, pval,rfERC,rpval)
             @collect
@@ -127,8 +124,8 @@ end
     return disk_cache("plot_data", gene) do
         chr_order = ["2L", "2R", "3L", "3R", "4", "X", "Y", "mitochondrion_genome"]
         chr_lengths = [23312347, 25254477, 28012551, 32067996, 1271129, 23107330, 3666928]
-
-        ERC_data = @eval @chain dros_table begin
+        dros_table = db_table(con, "D_melanogaster")
+        ERC_data = @eval @chain $dros_table begin
             @filter(i == $gene || j == $gene)
             @select(i, j, fERC, same_chr, dist, chr_i, chr_j, pos_i_1, pos_i_2, pos_j_1, pos_j_2, pval, null)
             @collect
