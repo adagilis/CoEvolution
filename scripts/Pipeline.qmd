@@ -230,35 +230,21 @@ CSV.write(data_dir*focal*"_gene_table.csv",gene_table)
 
 ```{julia}
 #BY correct p-values
-using MultipleTesting
-ERC.pval_BY = adjust(collect(ERC.pval),BenjaminiYekutieli())
+using MultipleTesting, Statistics, Distributions
+## Changed from running simulations (cool, but requires assumptions about the strength of correlated evolution) to simply looking at residuals. This works better, imo, since it's fairly solid grounding for how much more/less each interaction shows signal compared to mean noise. E.g. significance is not the significance of correlations, but signal exceeding expected correlations given average correlations for each gene.
 
-include(srcdir("ERC_simulations.jl"))
-species_tree = read_tree(data_dir*focal*"/trees/astral_consensus_rerooted.newick")
-
-#Positive null - trees that _have_ evolved along the exact same rates, so should show correlations with minor differences.
-trees_null = simulate_tree_set(species_tree,10,1000,40,73,focal)
-ERC_sims = runERC_collection(trees_null,species_tree;cutoff=5)
-ERC_sims = ERC_sims[completecases(ERC_sims),:]
-disallowmissing!(ERC_sims)
-sims_cdf = ecdf(ERC_sims.fERC)
-ERC.sims = sims_cdf.(ERC.fERC)
-
-#Negative null - correlations between i.i.d. branch lengths drawn from exponential proportional to the branch lengths.
-ERC_null = calculate_ERC_exp_null(species_tree,1000)
-disallowmissing!(ERC_null)
-ERC_null.fERC = fisher_trans.(ERC_null.r,length(get_branch_lengths(species_tree)))
-null_cdf = ecdf(ERC_null.fERC)
-ERC.null = null_cdf.(ERC.fERC)
-
-#Take only edges outside of expectation from positive sim. No good a priori cut-off to choose here, frankly. My own feelings are that "significant" edges are only useful when comparing to some expectation, and while we build simulations to have 10X the coalescence times (and therefore highly correlated rates), how much our real data should match this expectation is unclear. We could simlate 2x or 100x coalescence times and get very different results!
-gt_sims = findall(ERC.sims .>0.95)
-
-sig_ERC = ERC[intersect(gt_sims,findall(ERC.pval_BY .<0.05)),:]
-#Run BH correction on resulting interactions to retain only edges with FDR 0.001 (combinatorial explosion warrants low rates)
-#Now, edges that are Bonferonni significant _and_ beyond dynamic cut-off are retained further.
+id_i = indexin(ERC.i,gene_table.gene)
+id_j = indexin(ERC.j,gene_table.gene)
+mean_ferc = mean(filter(isfinite,ERC.fERC))
 
 
+#Just use residuals from additive expectation! duh!
+fNull = gene_table.mean_fERC[id_i] .+ gene_table.mean_fERC[id_j] .- mean_ferc
+cor_fERC = ERC.fERC .- mean_ferc
+#We can change these to z-scores and even get out significance testing!
+z_ERC = (cor_fERC .- mean(cor_fERC)) ./ std(cor_fERC)
+p_vals = 2 .*(1 .- cdf.(Normal(0,1),abs.(z_ERC)))  #I'm assuming they are normally distributed here - check if true!
+p_vals_adj = adjust(p_vals,BenjaminiHochberg())
 
 CSV.write(data_dir*focal*"_sig_ints.csv",sig_ERC)
 ```
@@ -790,18 +776,23 @@ end
 
 ```{julia}
 
-#The idea is to calculate a value that is \spec_ij = \quantile(fERC_i,fERC_ij) * \quantile(fERC_i,fERC_ij)
-#To do this efficiently, we want to have a quick function that, given two quantiles returns the combined prob
-function spec(erc_val,i,j,vals)
-   return(length(findall(vals[i].<erc_val))/length(vals[i])*length(findall(vals[j].<erc_val))/length(vals[j]))
-end
-
 id_i = indexin(ERC.i,gene_table.gene)
 id_j = indexin(ERC.j,gene_table.gene)
+mean_ferc = mean(filter(isfinite,ERC.fERC))
 
-cor_fERC = 2 .* ERC.fERC .- gene_table.mean_fERC[id_i]-gene_table.mean_fERC[id_j]
 
-points = [Point3f(pos_map1[x],pos_map2[x],cor_fERC[x]) for x in 1:length(pos_map1)]
+#Just use residuals from additive expectation! duh!
+fNull = gene_table.mean_fERC[id_i] .+ gene_table.mean_fERC[id_j] .- mean_ferc
+r_fERC = ERC.fERC .- mean_ferc
+#We can change these to z-scores and even get out significance testing!
+z_ERC = (r_fERC .- mean(r_fERC)) ./ std(r_fERC)
+p_vals = 2 .*(1 .- cdf.(Normal(0,1),abs.(z_ERC)))
+p_vals_adj = adjust(p_vals,BenjaminiHochberg())
+
+points = [Point3f(pos_map1[x],pos_map2[x],z_ERC[x]) for x in 1:length(pos_map1)]
+sig_points = [Point2f(pos_map2[x],pos_map1[x]) for x in findall(p_vals_adj .< 0.05)]
+
+
 fig = Figure()
 #Genome-wide interaction plot
 ax2 = Axis(fig[2,1], 
@@ -823,6 +814,8 @@ ax2 = Axis(fig[2,1],
     yticks=chr_ticks
 )
 ds = datashader!(ax2,points,agg=Makie.AggMean(),operation=identity,colormap=reverse(diverging_palette(0,200,32,mid=0.65)))
-Colorbar(fig[1,1],ds,vertical=false,label=L"2fERC_{i,j}-\overline{fERC_{i}}-\overline{fERC_{j}}")
+Colorbar(fig[1,1],ds,vertical=false,label=L"z(residual(fERC))")
+sigs = datashader!(ax2,sig_points,colormap=[RGBAf(1,1,1,0),:purple])
+Colorbar(fig[2,2],sigs,label="Significant Interactions")
 rowgap!(fig.layout,0)
 ```
