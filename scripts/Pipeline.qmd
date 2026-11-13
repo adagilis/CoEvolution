@@ -783,9 +783,9 @@ mean_ferc = mean(filter(isfinite,ERC.fERC))
 
 #Just use residuals from additive expectation! duh!
 fNull = gene_table.mean_fERC[id_i] .+ gene_table.mean_fERC[id_j] .- mean_ferc
-cor_fERC = ERC.fERC .- mean_ferc
+r_fERC = ERC.fERC .- mean_ferc
 #We can change these to z-scores and even get out significance testing!
-z_ERC = (cor_fERC .- mean(cor_fERC)) ./ std(cor_fERC)
+z_ERC = (r_fERC .- mean(r_fERC)) ./ std(r_fERC)
 p_vals = 2 .*(1 .- cdf.(Normal(0,1),abs.(z_ERC)))
 p_vals_adj = adjust(p_vals,BenjaminiHochberg())
 

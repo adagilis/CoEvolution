@@ -111,7 +111,7 @@ end
     return disk_cache("interactions", gene) do
         ERC_table = @eval @chain dros_table begin
             @filter(i == $gene || j == $gene)
-            @select(i, j, r, fERC, pval)
+            @select(i, j, r, fERC, pval,rfERC,rpval)
             @collect
         end
         swaps = findall(ERC_table.j .== gene)
@@ -250,7 +250,9 @@ function interactions_view(gene)
                 DOM.td(x.PartnerName, style="padding: 8px; border: 1px solid #ddd;"),
                 DOM.td(string(x.r), style="padding: 8px; border: 1px solid #ddd;"),
                 DOM.td(string(x.fERC), style="padding: 8px; border: 1px solid #ddd;"),
-                DOM.td(string(x.pval), style="padding: 8px; border: 1px solid #ddd;")
+                DOM.td(string(x.pval), style="padding: 8px; border: 1px solid #ddd;"),
+                DOM.td(string(x.rfERC), style="padding: 8px; border: 1px solid #ddd;"),
+                DOM.td(string(x.rpval), style="padding: 8px; border: 1px solid #ddd;")
             ) for x in eachrow(interactions)
         ]
 
@@ -259,7 +261,9 @@ function interactions_view(gene)
             make_sortable_th("Partner Name", style="position: sticky; top: 0; z-index: 1;"),
             make_sortable_th("Pearson Correlation", style="position: sticky; top: 0; z-index: 1;"),
             make_sortable_th("fERC", style="position: sticky; top: 0; z-index: 1;"),
-            make_sortable_th("p-val (correlation)", style="position: sticky; top: 0; z-index: 1;")
+            make_sortable_th("p-val (correlation)", style="position: sticky; top: 0; z-index: 1;"),
+            make_sortable_th("rfERC", style="position: sticky; top: 0; z-index: 1;"),
+            make_sortable_th("p-val (residual)", style="position: sticky; top: 0; z-index: 1;")
         )
 
         html_table = DOM.table(
