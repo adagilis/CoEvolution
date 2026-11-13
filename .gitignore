@@ -432,3 +432,5 @@ scripts/nextflow/.nextflow/*
 .nextflow*
 work/*
 results/*
+
+*.vdoc*
