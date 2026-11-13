@@ -8,7 +8,10 @@ using ProgressMeter
 using Term
 using Term.Tables
 using Arrow
+using TidierDB
+using Memoize
 import Term: tprint
+
 
 include("Phylo_utilities.jl")
 include("Stats_utilities.jl") 
@@ -136,19 +139,67 @@ function fisher_trans(r,n_edges)
 end
 
 """
-    function specificity(i,j)-> returns weighted strenght of an interaction.
-        Defined as frac{2*fERC_{ij}}{sum_if ERC_{ij} sum_j + fERC_{ij}} 
+    function meanERC(db_table) -> meanfERC::Float64
+Quick helper function to get the value of fERC for an ERC table. memoized since it's used in other calls, saving the db lookup every time.
+"""
+@memoize function meanERC(db_table)
+    erc = @chain db_table begin; 
+        @select(fERC); 
+        @collect; 
+    end
+    return(mean(erc[:,1]))
+end
+
+
+"""
+    function meanERC(i,db_table) -> meanfERC::Float64
+Quick helper function to get the value of fERC for an ERC table for all interactions involving gene i. memoized since it's used in other calls, saving the db lookup every time.
+"""
+@memoize function meanERC(i,db_table)
+    erc = @eval @chain db_table begin; 
+        @filter(i == !!i || j == !!i)
+        @select(fERC); 
+        @collect;
+    end 
+    return(mean(erc[:,1]))
+end
+
+"""
+    function rERC(i,j)-> rERC
+        Returns the residual deviation from the additive expectation for an interaction, given by
+            rERC_{ij} = fERC_{ij} + \bar{fERC} -\bar{fERC_i} -\bar{fERC_j}
         Represents how much of the significant fERC signal between these two genes is unique to them.
         Meant to filter out cases where strong interactions with hub genes dominate outputs of analyses - 
         in some cases we may be more interested in less strong signals of evolution that represent more of 
         the co-evolutionary signal for the pair of genes together.
-
-        Note that this could also be calculated using the degree of each gene, without ascribing weights based on fERC.
-        That would be, in some ways, more accurately called specificity, but I needed a quick function name.
 """
-function specificity(a,b,sigERC)
-    sum_a = sum(sigERC.fERC[sigERC.i .==a .|| sigERC.j .==a])
-    sum_b = sum(sigERC.fERC[sigERC.i .==b .|| sigERC.j .==b])
-    val = sigERC.fERC[sigERC.gid .== join(sort([a,b]),"_")]
-    return(2*val/(sum_a+sum_b))
+function rERC(a,b,db_table)
+    gid=join(sort([a,b]),delim="-")
+    fERC = @eval @chain db_table begin
+        @filter(gid == $gid)
+        @select fERC
+        @collect
+    end
+    mean_erc = meanERC(db_table)
+    mean_a = meanERC(a,db_table)
+    mean_b = meanERC(b,db_table)
+    return(fERC[1,1]+mean_erc-mean_a-mean_b)
+end
+
+
+"""
+function rERC_table(db_table,genes)-> rERC values
+    Takes an ERC table and returns residual ERC values for all genes in the table. Heavy memory use, but faster than running for each interaction individually.
+"""
+function rERC_table(db_table,genes)
+    mean_erc = meanERC(db_table)
+    gene_erc = [mean_erc(g,db_table) for g in genes]
+    e = @chain db_table begin
+        @select(fERC,i,j)
+        @collect
+    end
+    id_i = indexin.(e.i,genes)
+    id_j = indexin.(e.j,genes)
+    rERC = e.fERC .+ mean_erc .- gene_erc[id_i] .- gene_erc[id_j]
+    return(rERC)
 end
